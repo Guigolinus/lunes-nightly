@@ -105,7 +105,7 @@ pub type Index = u32;
 /// A hash of some data used by the chain.
 pub type Hash = sp_core::H256;
 
-pub type AssetId = codec::Compact<u32>;
+pub type AssetId = u32;
 
 impl_opaque_keys! {
 	pub struct SessionKeys {
@@ -992,7 +992,7 @@ where
     {
       if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
 			// valor real do AssetId
-			let asset_id_real: T::AssetId = id.0;
+			let asset_id_real: T::AssetId = id.0.into();
 
 			// versão em u32 para comparação
 			let asset_id_raw: u32 = id.0.into();
@@ -1018,7 +1018,7 @@ where
         _len: usize,
     ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
        if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-			let asset_id_real: T::AssetId = id.0;
+			let asset_id_real: T::AssetId = id.0.into();
 			let asset_id_raw: u32 = id.0.into();
 
 			let usdt_id: u32 = 2;

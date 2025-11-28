@@ -945,10 +945,10 @@ impl pallet_child_bounties::Config for Runtime {
 }
 /// Prevents minting of any asset except USDT when the asset already has a non-zero supply.
 pub struct PreventMintUnlessUsdt;
-impl pallet_assets::FrozenBalance<AssetId, AccountId, Balance> for PreventMintUnlessUsdt {
-	fn frozen_balance(asset: AssetId, _who: &AccountId) -> Option<Balance> {
+impl pallet_assets::FrozenBalance<u32, AccountId, Balance> for PreventMintUnlessUsdt {
+	fn frozen_balance(asset: u32, _who: &AccountId) -> Option<Balance> {
 		// USDT asset id is hard-coded as 2; adjust if your chain uses a different id.
-		const USDT_ASSET_ID: AssetId = 2;
+		const USDT_ASSET_ID: u32 = 2;
 
 		// If the asset is USDT, allow any balance (no freeze).
 		if asset == USDT_ASSET_ID {
@@ -965,8 +965,8 @@ impl pallet_assets::FrozenBalance<AssetId, AccountId, Balance> for PreventMintUn
 	}
 
 	// Ensure the freeze is always applied for the affected assets.
-	fn is_frozen(asset: AssetId, _who: &AccountId) -> bool {
-		const USDT_ASSET_ID: AssetId = 2;
+	fn is_frozen(asset: u32, _who: &AccountId) -> bool {
+		const USDT_ASSET_ID: u32 = 2;
 		asset != USDT_ASSET_ID && Assets::total_supply(asset) > 0
 	}
 }

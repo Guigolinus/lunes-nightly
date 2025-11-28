@@ -968,42 +968,56 @@ impl<T> SignedExtension for RestrictAssetMint<T>
 where
     T: frame_system::Config + pallet_assets::Config,
 {
+    const IDENTIFIER: &'static str = "RestrictAssetMint";
+
     type AccountId = T::AccountId;
     type Call = RuntimeCall;
     type AdditionalSigned = ();
     type Pre = ();
 
-    fn additional_signed(&self) -> Result<Self::AdditionalSigned, sp_runtime::transaction_validity::TransactionValidityError> {
+    fn additional_signed(
+        &self
+    ) -> Result<Self::AdditionalSigned, sp_runtime::transaction_validity::TransactionValidityError> {
         Ok(())
     }
 
+    // retorna Result<ValidTransaction, TransactionValidityError>
     fn validate(
         &self,
         _who: &Self::AccountId,
         call: &Self::Call,
         _info: &sp_runtime::traits::DispatchInfoOf<Self::Call>,
         _len: usize,
-    ) -> Result<TransactionValidity, sp_runtime::transaction_validity::TransactionValidityError> {
+    ) -> Result<sp_runtime::transaction_validity::ValidTransaction, sp_runtime::transaction_validity::TransactionValidityError>
+    {
         if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-            const USDT_ASSET_ID: AssetId = 2;
-            if *id != USDT_ASSET_ID && pallet_assets::Pallet::<T>::total_supply(*id) > Zero::zero() {
+            // converte/duplica o id para o tipo associado T::AssetId
+            let asset_id: T::AssetId = id.clone();
+
+            // constrói o AssetId do USDT a partir de u32 (ajuste se seu AssetId não suportar From<u32>)
+            let usdt: T::AssetId = 2u32.into();
+
+            if asset_id != usdt && pallet_assets::Pallet::<T>::total_supply(asset_id) > Zero::zero() {
                 return Err(InvalidTransaction::Custom(1).into());
             }
         }
+
         Ok(ValidTransaction::default())
     }
-	 fn pre_dispatch(
-        &self,
+
+    // pre_dispatch recebe self (valor)
+    fn pre_dispatch(
+        self,
         _who: &Self::AccountId,
         call: &Self::Call,
         _info: &sp_runtime::traits::DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
         if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-            const USDT_ASSET_ID: AssetId = 2;
-            if *id != USDT_ASSET_ID
-                && <pallet_assets::Pallet<T>>::total_supply(*id) > Zero::zero()
-            {
+            let asset_id: T::AssetId = id.clone();
+            let usdt: T::AssetId = 2u32.into();
+
+            if asset_id != usdt && pallet_assets::Pallet::<T>::total_supply(asset_id) > Zero::zero() {
                 return Err(InvalidTransaction::Custom(1).into());
             }
         }

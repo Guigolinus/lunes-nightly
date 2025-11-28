@@ -990,16 +990,21 @@ where
         _len: usize,
     ) -> Result<sp_runtime::transaction_validity::ValidTransaction, sp_runtime::transaction_validity::TransactionValidityError>
     {
-        if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-            // converte/duplica o id para o tipo associado T::AssetId
-            let asset_id_raw: u32 = (*id).into();
+      if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
+			// valor real do AssetId
+			let asset_id_real: T::AssetId = id.0;
 
-            let usdt_id: u32 = 2;
-			let supply = pallet_assets::Pallet::<T>::total_supply(asset_id_raw.into());
-            if asset_id_raw != usdt_id && supply > Zero::zero() {
-            	return Err(InvalidTransaction::Custom(1).into());
-        	}
-        }
+			// versão em u32 para comparação
+			let asset_id_raw: u32 = id.0.into();
+
+			let usdt_id: u32 = 2;
+
+			let supply = pallet_assets::Pallet::<T>::total_supply(asset_id_real);
+
+			if asset_id_raw != usdt_id && supply > Zero::zero() {
+				return Err(InvalidTransaction::Custom(1).into());
+			}
+		}
 
         Ok(ValidTransaction::default())
     }
@@ -1012,16 +1017,18 @@ where
         _info: &sp_runtime::traits::DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
-        if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-          	let asset_id_raw: u32 = (*id).into();
+       if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
+			let asset_id_real: T::AssetId = id.0;
+			let asset_id_raw: u32 = id.0.into();
+
 			let usdt_id: u32 = 2;
 
-			let supply = pallet_assets::Pallet::<T>::total_supply(asset_id_raw.into());
+			let supply = pallet_assets::Pallet::<T>::total_supply(asset_id_real);
 
 			if asset_id_raw != usdt_id && supply > Zero::zero() {
 				return Err(InvalidTransaction::Custom(1).into());
 			}
-        }
+		}
         Ok(())
     }
 }

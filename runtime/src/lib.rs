@@ -15,6 +15,7 @@ mod voter_bags;
 pub mod assets_api;
 use hex_literal::hex;
 use codec::{Decode, Encode};
+use scale_info::TypeInfo;
 use frame_support::{traits::OnUnbalanced, weights::ConstantMultiplier};
 
 use pallet_grandpa::AuthorityId as GrandpaId;
@@ -35,7 +36,7 @@ use sp_runtime::{
 		OpaqueKeys, StaticLookup, SaturatedConversion,
 	},
 	curve::PiecewiseLinear,
-	transaction_validity::{TransactionSource, TransactionValidity, TransactionPriority},
+	transaction_validity::{TransactionSource, TransactionValidity, TransactionPriority,InvalidTransaction,ValidTransaction},
 	ApplyExtrinsicResult, MultiSignature,Percent
 };
 use frame_system::{
@@ -53,7 +54,6 @@ use chain_extension::Psp22Extension;
 #[cfg(any(feature = "std", test))]
 pub use pallet_staking::StakerStatus;
 use sp_runtime::traits::SignedExtension;
-use sp_runtime::transaction_validity::{InvalidTransaction, ValidTransaction};
 use sp_runtime::traits::Zero;
 use core::marker::PhantomData;
 
@@ -946,37 +946,45 @@ impl pallet_child_bounties::Config for Runtime {
 	type ChildBountyValueMinimum = ChildBountyValueMinimum;
 	type WeightInfo = pallet_child_bounties::weights::SubstrateWeight<Runtime>;
 }
-#[derive(Eq, PartialEq, Clone, Debug, scale_info::TypeInfo)]
-pub struct RestrictAssetMint<T>(PhantomData<T>);
 
+
+#[derive(Eq, PartialEq, Clone, Debug, Encode, Decode, TypeInfo)]
+#[scale_info(skip_type_params(T))]
+pub struct RestrictAssetMint<T>(#[codec(skip)] PhantomData<T>);
+impl<T> Default for RestrictAssetMint<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
 impl<T> SignedExtension for RestrictAssetMint<T>
 where
-	T: frame_system::Config + pallet_assets::Config + Send + Sync,
+    T: frame_system::Config + pallet_assets::Config,
 {
-	type AccountId = T::AccountId;
-	type Call = RuntimeCall;
-	type AdditionalSigned = ();
-	type Pre = ();
+    type AccountId = T::AccountId;
+    type Call = RuntimeCall;
+    type AdditionalSigned = ();
+    type Pre = ();
 
-	fn additional_signed(&self) -> Result<Self::AdditionalSigned, sp_runtime::transaction_validity::TransactionValidityError> {
-		Ok(())
-	}
+    fn additional_signed(&self) -> Result<Self::AdditionalSigned, sp_runtime::transaction_validity::TransactionValidityError> {
+        Ok(())
+    }
 
-	fn validate(
-		&self,
-		_who: &Self::AccountId,
-		call: &Self::Call,
-		_info: sp_runtime::traits::DispatchInfoOf<Self::Call>,
-		_len: usize,
-	) -> Result<TransactionValidity, sp_runtime::transaction_validity::TransactionValidityError> {
-		if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-			const USDT_ASSET_ID: u32 = 2;
-			if *id != USDT_ASSET_ID && pallet_assets::Pallet::<T>::total_supply(*id) > Zero::zero() {
-				return Err(InvalidTransaction::Custom(1).into());
-			}
-		}
-		Ok(ValidTransaction::default())
-	}
+    fn validate(
+        &self,
+        _who: &Self::AccountId,
+        call: &Self::Call,
+        _info: sp_runtime::traits::DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> Result<TransactionValidity, sp_runtime::transaction_validity::TransactionValidityError> {
+        if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
+            const USDT_ASSET_ID: u32 = 2;
+            // total_supply retorna o Balance do pallet assets
+            if *id != USDT_ASSET_ID && pallet_assets::Pallet::<T>::total_supply(*id) > Zero::zero() {
+                return Err(InvalidTransaction::Custom(1).into());
+            }
+        }
+        Ok(ValidTransaction::default())
+    }
 }
 parameter_types! {
 	pub const AssetDeposit: Balance = 100 * UNIT;

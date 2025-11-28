@@ -994,7 +994,7 @@ where
         &self,
         _who: &Self::AccountId,
         call: &Self::Call,
-        _info: DispatchInfoOf<Self::Call>,
+        _info: sp_runtime::traits::DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
         if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {

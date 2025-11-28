@@ -105,6 +105,8 @@ pub type Index = u32;
 /// A hash of some data used by the chain.
 pub type Hash = sp_core::H256;
 
+pub type AssetId = u32;
+
 impl_opaque_keys! {
 	pub struct SessionKeys {
 		pub aura: Aura,
@@ -662,7 +664,7 @@ where
 			frame_system::CheckEra::<Runtime>::from(era),
 			frame_system::CheckNonce::<Runtime>::from(nonce),
 			frame_system::CheckWeight::<Runtime>::new(),
-			RestrictAssetMint::<Runtime>::new(),
+			RestrictAssetMint::<Runtime>,
 			pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
 		);
 		let raw_payload = SignedPayload::new(call, extra)
@@ -979,11 +981,11 @@ where
         &self,
         _who: &Self::AccountId,
         call: &Self::Call,
-        _info: sp_runtime::traits::DispatchInfoOf<Self::Call>,
+        _info: &sp_runtime::traits::DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> Result<TransactionValidity, sp_runtime::transaction_validity::TransactionValidityError> {
         if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-            const USDT_ASSET_ID: u32 = 2;
+            const USDT_ASSET_ID: AssetId = 2;
             if *id != USDT_ASSET_ID && pallet_assets::Pallet::<T>::total_supply(*id) > Zero::zero() {
                 return Err(InvalidTransaction::Custom(1).into());
             }
@@ -994,11 +996,11 @@ where
         &self,
         _who: &Self::AccountId,
         call: &Self::Call,
-        _info: sp_runtime::traits::DispatchInfoOf<Self::Call>,
+        _info: &sp_runtime::traits::DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
         if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-            const USDT_ASSET_ID: u32 = 2;
+            const USDT_ASSET_ID: AssetId = 2;
             if *id != USDT_ASSET_ID
                 && <pallet_assets::Pallet<T>>::total_supply(*id) > Zero::zero()
             {

@@ -57,7 +57,7 @@ pub use pallet_staking::StakerStatus;
 pub use frame_support::{
 	dispatch::DispatchClass,
 	pallet_prelude::Get,
-	construct_runtime, 
+	construct_runtime,
 	parameter_types,
 	traits::{
 		ConstU128, ConstU32, ConstU64, ConstU8, KeyOwnerProofSystem, Randomness, StorageInfo,
@@ -257,12 +257,12 @@ impl pallet_balances::Config for Runtime {
 	type DustRemoval = ();
 	type AccountStore = System;
 	type ExistentialDeposit = ConstU128<EXISTENTIAL_DEPOSIT>;
-	type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;	
+	type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
 pub struct WeightToFeeLunes;
 impl WeightToFeePolynomial for WeightToFeeLunes {
 	type Balance = Balance;
-	fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {		
+	fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {
 		smallvec![WeightToFeeCoefficient {
 			degree: 1,
 			negative: false,
@@ -288,10 +288,10 @@ impl OnUnbalanced<NegativeImbalance> for Author {
 pub struct TreasuryLunes;
 impl OnUnbalanced<NegativeImbalance> for TreasuryLunes {
 	fn on_nonzero_unbalanced(amount: NegativeImbalance) {
-		
+
 		let recipient: AccountId = hex![
 				"2c11d2aff81147e5522539c51c1cb87bae94a0865d214f3983f3557a6732f26a"
-			].into();		
+			].into();
 		Balances::resolve_creating(&recipient, amount);
 	}
 }
@@ -305,16 +305,16 @@ fn get_total_issuance<T: pallet_balances::Config>() -> Balance {
 pub struct DealWithFees;
 impl OnUnbalanced<NegativeImbalance> for DealWithFees {
 	fn on_unbalanceds<B>(mut fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
-		if let Some(mut fees) = fees_then_tips.next() {			
-			
+		if let Some(mut fees) = fees_then_tips.next() {
+
 			if let Some(tips) = fees_then_tips.next() {
 				tips.merge_into(&mut fees);
 			}
-			// for fees, 12.5% to treasury, 75% to Node e and 12.5% to Burn 
-			let split_fee = fees.ration(25, 75);			
-			
+			// for fees, 12.5% to treasury, 75% to Node e and 12.5% to Burn
+			let split_fee = fees.ration(25, 75);
+
 			Author::on_unbalanced(split_fee.1);
-			
+
 			let total_issuance: Balance = get_total_issuance::<Runtime>();
 			if total_issuance > (50_000_000 * UNIT) {
 				let split_burn = split_fee.0.ration(50, 50);
@@ -544,7 +544,7 @@ pub struct StakingBenchmarkingConfig;
 impl pallet_staking::BenchmarkingConfig for StakingBenchmarkingConfig {
 	type MaxNominators = ConstU32<1000>;
 	type MaxValidators = ConstU32<1000>;
-	
+
 }
 impl pallet_authorship::Config for Runtime {
 	type FindAuthor = pallet_session::FindAccountFromAuthorIndex<Self, Aura>;
@@ -557,7 +557,7 @@ impl pallet_staking::Config for Runtime {
 	type CurrencyBalance = Balance;
 	type UnixTime = Timestamp;
 	type CurrencyToVote = U128CurrencyToVote;
-	
+
 	type RewardRemainder = TreasuryLunes; // TODO Treasury
 	type RuntimeEvent = RuntimeEvent;
 	type Slash = TreasuryLunes; // TODO Treasury send the slashed funds to the treasury.
@@ -715,7 +715,7 @@ impl pallet_contracts::Config for Runtime {
 	type UnsafeUnstableInterface = ConstBool<false>;
 	type MaxDebugBufferLen = ConstU32<{ 2 * 1024 * 1024 }>;
 	type ChainExtension = Psp22Extension;
-	
+
 }
 
 parameter_types! {
@@ -943,7 +943,33 @@ impl pallet_child_bounties::Config for Runtime {
 	type ChildBountyValueMinimum = ChildBountyValueMinimum;
 	type WeightInfo = pallet_child_bounties::weights::SubstrateWeight<Runtime>;
 }
+/// Prevents minting of any asset except USDT when the asset already has a non-zero supply.
+pub struct PreventMintUnlessUsdt;
+impl pallet_assets::FrozenBalance<AssetId, AccountId, Balance> for PreventMintUnlessUsdt {
+	fn frozen_balance(asset: AssetId, _who: &AccountId) -> Option<Balance> {
+		// USDT asset id is hard-coded as 2; adjust if your chain uses a different id.
+		const USDT_ASSET_ID: AssetId = 2;
 
+		// If the asset is USDT, allow any balance (no freeze).
+		if asset == USDT_ASSET_ID {
+			return None;
+		}
+
+		// For non-USDT assets, if total supply is already positive, freeze the maximum
+		// possible balance on every account, effectively blocking any further minting.
+		if Assets::total_supply(asset) > 0 {
+			Some(Balance::MAX)
+		} else {
+			None
+		}
+	}
+
+	// Ensure the freeze is always applied for the affected assets.
+	fn is_frozen(asset: AssetId, _who: &AccountId) -> bool {
+		const USDT_ASSET_ID: AssetId = 2;
+		asset != USDT_ASSET_ID && Assets::total_supply(asset) > 0
+	}
+}
 parameter_types! {
 	pub const AssetDeposit: Balance = 100 * UNIT;
 	pub const ApprovalDeposit: Balance = 1 * UNIT;
@@ -966,7 +992,7 @@ impl pallet_assets::Config for Runtime {
 	type MetadataDepositPerByte = MetadataDepositPerByte;
 	type ApprovalDeposit = ApprovalDeposit;
 	type StringLimit = StringLimit;
-	type Freezer = ();
+	type Freezer = PreventMintUnlessUsdt;
 	type Extra = ();
 	type CallbackHandle = ();
 	type WeightInfo = pallet_assets::weights::SubstrateWeight<Runtime>;
@@ -1113,7 +1139,7 @@ impl pallet_scored_pool::Config for Runtime {
 	type Score = u64;
 	type ScoreOrigin = EnsureSigned<AccountId>;
 	type MaximumMembers = ConstU32<10>;
-}		
+}
 
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -1207,7 +1233,7 @@ mod benches {
 		[pallet_balances, Balances]
 		[pallet_timestamp, Timestamp]
 		[pallet_utility, Utility]
-		[pallet_offences, OffencesBench::<Runtime>]		
+		[pallet_offences, OffencesBench::<Runtime>]
 		[pallet_democracy, Democracy]
 		[pallet_collective, Council]
 		[pallet_treasury, Treasury]
@@ -1580,7 +1606,7 @@ impl_runtime_apis! {
 			Executive::try_execute_block(block, state_root_check, signature_check, select).expect("execute-block failed")
 		}
 	}
-	
+
 }
 
 #[cfg(test)]

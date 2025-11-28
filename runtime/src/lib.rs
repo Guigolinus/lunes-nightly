@@ -52,6 +52,11 @@ use constants::{currency::*, time::*};
 use chain_extension::Psp22Extension;
 #[cfg(any(feature = "std", test))]
 pub use pallet_staking::StakerStatus;
+use sp_runtime::traits::SignedExtension;
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity, ValidTransaction};
+use sp_runtime::DispatchError;
+use sp_runtime::traits::Zero;
+use core::marker::PhantomData;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -82,7 +87,6 @@ use pallet_transaction_payment::{ConstFeeMultiplier,CurrencyAdapter, Multiplier}
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 use pallet_nfts::PalletFeatures;
-pub type AssetId = u32;
 /// An index to a block.
 pub type BlockNumber = u32;
 
@@ -942,30 +946,36 @@ impl pallet_child_bounties::Config for Runtime {
 	type MaxActiveChildBountyCount = ConstU32<5>;
 	type ChildBountyValueMinimum = ChildBountyValueMinimum;
 	type WeightInfo = pallet_child_bounties::weights::SubstrateWeight<Runtime>;
-}
-/// Prevents minting of any asset except USDT when the asset already has a non-zero supply.
-pub struct PreventMintUnlessUsdt;
-impl pallet_assets::FrozenBalance<AssetId, AccountId, Balance> for PreventMintUnlessUsdt {
+}pub struct RestrictAssetMint<T>(PhantomData<T>);
 
+impl<T> SignedExtension for RestrictAssetMint<T>
+where
+	T: frame_system::Config + pallet_assets::Config,
+{
+	type AccountId = T::AccountId;
+	type Call = RuntimeCall;
+	type AdditionalSigned = ();
+	type Pre = ();
 
-	fn frozen_balance(asset: AssetId, _who: &AccountId) -> Option<Balance> {
-		// USDT asset id is hard-coded as 1; adjust if your chain uses a different id.
-		const USDT_ASSET_ID: AssetId = 2;
-
-		// If the asset is USDT, allow any balance (no freeze).
-		if asset == USDT_ASSET_ID {
-			return None;
-		}
-
-		// For non-USDT assets, if total supply is already positive, freeze the maximum
-		// possible balance on every account, effectively blocking any further minting.
-		if Assets::total_supply(asset) > 0 {
-			Some(Balance::MAX)
-		} else {
-			None
-		}
+	fn additional_signed(&self) -> Result<Self::AdditionalSigned, sp_runtime::TransactionValidityError> {
+		Ok(())
 	}
-	fn died(_asset: AssetId, _who: &AccountId) {}
+
+	fn validate(
+		&self,
+		_who: &Self::AccountId,
+		call: &Self::Call,
+		_info: sp_runtime::traits::DispatchInfoOf<Self::Call>,
+		_len: usize,
+	) -> Result<TransactionValidity, sp_runtime::TransactionValidityError> {
+		if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
+			const USDT_ASSET_ID: u32 = 2;
+			if *id != USDT_ASSET_ID && pallet_assets::Pallet::<T>::total_supply(*id) > Zero::zero() {
+				return Err(InvalidTransaction::Custom(1).into());
+			}
+		}
+		Ok(ValidTransaction::default())
+	}
 }
 parameter_types! {
 	pub const AssetDeposit: Balance = 100 * UNIT;
@@ -989,7 +999,7 @@ impl pallet_assets::Config for Runtime {
 	type MetadataDepositPerByte = MetadataDepositPerByte;
 	type ApprovalDeposit = ApprovalDeposit;
 	type StringLimit = StringLimit;
-	type Freezer = PreventMintUnlessUsdt;
+	type Freezer = ();
 	type Extra = ();
 	type CallbackHandle = ();
 	type WeightInfo = pallet_assets::weights::SubstrateWeight<Runtime>;
@@ -1201,6 +1211,7 @@ pub type SignedExtra = (
 	frame_system::CheckEra<Runtime>,
 	frame_system::CheckNonce<Runtime>,
 	frame_system::CheckWeight<Runtime>,
+	RestrictAssetMint<Runtime>,
 	pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 

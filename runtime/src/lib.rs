@@ -53,8 +53,7 @@ use chain_extension::Psp22Extension;
 #[cfg(any(feature = "std", test))]
 pub use pallet_staking::StakerStatus;
 use sp_runtime::traits::SignedExtension;
-use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity, ValidTransaction};
-use sp_runtime::DispatchError;
+use sp_runtime::transaction_validity::{InvalidTransaction, ValidTransaction};
 use sp_runtime::traits::Zero;
 use core::marker::PhantomData;
 

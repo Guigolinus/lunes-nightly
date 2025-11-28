@@ -105,7 +105,7 @@ pub type Index = u32;
 /// A hash of some data used by the chain.
 pub type Hash = sp_core::H256;
 
-pub type AssetId = u32;
+pub type AssetId = codec::Compact<u32>;
 
 impl_opaque_keys! {
 	pub struct SessionKeys {

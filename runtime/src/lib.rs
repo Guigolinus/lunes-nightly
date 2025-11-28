@@ -956,7 +956,7 @@ where
 	type AdditionalSigned = ();
 	type Pre = ();
 
-	fn additional_signed(&self) -> Result<Self::AdditionalSigned, sp_runtime::TransactionValidityError> {
+	fn additional_signed(&self) -> Result<Self::AdditionalSigned, sp_runtime::transaction_validity::TransactionValidityError> {
 		Ok(())
 	}
 
@@ -966,7 +966,7 @@ where
 		call: &Self::Call,
 		_info: sp_runtime::traits::DispatchInfoOf<Self::Call>,
 		_len: usize,
-	) -> Result<TransactionValidity, sp_runtime::TransactionValidityError> {
+	) -> Result<TransactionValidity, sp_runtime::transaction_validity::TransactionValidityError> {
 		if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
 			const USDT_ASSET_ID: u32 = 2;
 			if *id != USDT_ASSET_ID && pallet_assets::Pallet::<T>::total_supply(*id) > Zero::zero() {

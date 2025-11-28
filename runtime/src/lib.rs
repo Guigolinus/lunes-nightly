@@ -664,7 +664,7 @@ where
 			frame_system::CheckEra::<Runtime>::from(era),
 			frame_system::CheckNonce::<Runtime>::from(nonce),
 			frame_system::CheckWeight::<Runtime>::new(),
-			RestrictAssetMint::<Runtime>,
+			RestrictAssetMint::<Runtime>::default(),
 			pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
 		);
 		let raw_payload = SignedPayload::new(call, extra)
@@ -992,14 +992,13 @@ where
     {
         if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
             // converte/duplica o id para o tipo associado T::AssetId
-            let asset_id: T::AssetId = id.clone();
+            let asset_id_raw: u32 = (*id).into();
 
-            // constrói o AssetId do USDT a partir de u32 (ajuste se seu AssetId não suportar From<u32>)
-            let usdt: T::AssetId = 2u32.into();
-
-            if asset_id != usdt && pallet_assets::Pallet::<T>::total_supply(asset_id) > Zero::zero() {
-                return Err(InvalidTransaction::Custom(1).into());
-            }
+            let usdt_id: u32 = 2;
+			let supply = pallet_assets::Pallet::<T>::total_supply(asset_id_raw.into());
+            if asset_id_raw != usdt_id && supply > Zero::zero() {
+            	return Err(InvalidTransaction::Custom(1).into());
+        	}
         }
 
         Ok(ValidTransaction::default())
@@ -1014,12 +1013,14 @@ where
         _len: usize,
     ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
         if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-            let asset_id: T::AssetId = id.clone();
-            let usdt: T::AssetId = 2u32.into();
+          	let asset_id_raw: u32 = (*id).into();
+			let usdt_id: u32 = 2;
 
-            if asset_id != usdt && pallet_assets::Pallet::<T>::total_supply(asset_id) > Zero::zero() {
-                return Err(InvalidTransaction::Custom(1).into());
-            }
+			let supply = pallet_assets::Pallet::<T>::total_supply(asset_id_raw.into());
+
+			if asset_id_raw != usdt_id && supply > Zero::zero() {
+				return Err(InvalidTransaction::Custom(1).into());
+			}
         }
         Ok(())
     }

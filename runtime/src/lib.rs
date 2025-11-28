@@ -948,7 +948,7 @@ impl pallet_child_bounties::Config for Runtime {
 }
 
 
-#[derive(Eq, PartialEq, Clone, Debug, Encode, Decode, TypeInfo)]
+#[derive(Eq, PartialEq, Clone, Encode, Decode, TypeInfo)]
 #[scale_info(skip_type_params(T))]
 pub struct RestrictAssetMint<T>(());
 impl<T> core::fmt::Debug for RestrictAssetMint<T> {

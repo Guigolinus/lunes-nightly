@@ -662,7 +662,7 @@ where
 			frame_system::CheckEra::<Runtime>::from(era),
 			frame_system::CheckNonce::<Runtime>::from(nonce),
 			frame_system::CheckWeight::<Runtime>::new(),
-			RestrictAssetMint<Runtime>,
+			RestrictAssetMint::<Runtime>::new(),
 			pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
 		);
 		let raw_payload = SignedPayload::new(call, extra)
@@ -996,7 +996,7 @@ where
         call: &Self::Call,
         _info: DispatchInfoOf<Self::Call>,
         _len: usize,
-    ) -> Result<(), sp_runtime::TransactionValidityError> {
+    ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
         if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
             const USDT_ASSET_ID: u32 = 2;
             if *id != USDT_ASSET_ID

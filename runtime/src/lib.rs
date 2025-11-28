@@ -951,7 +951,7 @@ pub struct RestrictAssetMint<T>(PhantomData<T>);
 
 impl<T> SignedExtension for RestrictAssetMint<T>
 where
-	T: frame_system::Config + pallet_assets::Config,
+	T: frame_system::Config + pallet_assets::Config + Send + Sync,
 {
 	type AccountId = T::AccountId;
 	type Call = RuntimeCall;

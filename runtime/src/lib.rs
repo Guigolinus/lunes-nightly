@@ -950,11 +950,14 @@ impl pallet_child_bounties::Config for Runtime {
 
 #[derive(Eq, PartialEq, Clone, Debug, Encode, Decode, TypeInfo)]
 #[scale_info(skip_type_params(T))]
-pub struct RestrictAssetMint<T>(#[codec(skip)] PhantomData<T>);
-impl<T> Default for RestrictAssetMint<T> {
-    fn default() -> Self {
-        Self(PhantomData)
+pub struct RestrictAssetMint<T>(());
+impl<T> core::fmt::Debug for RestrictAssetMint<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("RestrictAssetMint").finish()
     }
+}
+impl<T> Default for RestrictAssetMint<T> {
+    fn default() -> Self { Self(()) }
 }
 impl<T> SignedExtension for RestrictAssetMint<T>
 where
@@ -978,7 +981,6 @@ where
     ) -> Result<TransactionValidity, sp_runtime::transaction_validity::TransactionValidityError> {
         if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
             const USDT_ASSET_ID: u32 = 2;
-            // total_supply retorna o Balance do pallet assets
             if *id != USDT_ASSET_ID && pallet_assets::Pallet::<T>::total_supply(*id) > Zero::zero() {
                 return Err(InvalidTransaction::Custom(1).into());
             }

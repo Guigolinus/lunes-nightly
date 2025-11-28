@@ -950,14 +950,16 @@ impl pallet_child_bounties::Config for Runtime {
 
 #[derive(Eq, PartialEq, Clone, Encode, Decode, TypeInfo)]
 #[scale_info(skip_type_params(T))]
-pub struct RestrictAssetMint<T>(());
+pub struct RestrictAssetMint<T>(#[codec(skip)] core::marker::PhantomData<fn() -> T>);
 impl<T> core::fmt::Debug for RestrictAssetMint<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_tuple("RestrictAssetMint").finish()
     }
 }
 impl<T> Default for RestrictAssetMint<T> {
-    fn default() -> Self { Self(()) }
+    fn default() -> Self {
+        Self(core::marker::PhantomData)
+    }
 }
 impl<T> SignedExtension for RestrictAssetMint<T>
 where

@@ -945,7 +945,9 @@ impl pallet_child_bounties::Config for Runtime {
 	type MaxActiveChildBountyCount = ConstU32<5>;
 	type ChildBountyValueMinimum = ChildBountyValueMinimum;
 	type WeightInfo = pallet_child_bounties::weights::SubstrateWeight<Runtime>;
-}pub struct RestrictAssetMint<T>(PhantomData<T>);
+}
+#[derive(Eq)]
+pub struct RestrictAssetMint<T>(PhantomData<T>);
 
 impl<T> SignedExtension for RestrictAssetMint<T>
 where

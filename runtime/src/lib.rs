@@ -662,6 +662,7 @@ where
 			frame_system::CheckEra::<Runtime>::from(era),
 			frame_system::CheckNonce::<Runtime>::from(nonce),
 			frame_system::CheckWeight::<Runtime>::new(),
+			RestrictAssetMint<Runtime>,
 			pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
 		);
 		let raw_payload = SignedPayload::new(call, extra)
@@ -988,6 +989,23 @@ where
             }
         }
         Ok(ValidTransaction::default())
+    }
+	 fn pre_dispatch(
+        &self,
+        _who: &Self::AccountId,
+        call: &Self::Call,
+        _info: DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> Result<(), sp_runtime::TransactionValidityError> {
+        if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
+            const USDT_ASSET_ID: u32 = 2;
+            if *id != USDT_ASSET_ID
+                && <pallet_assets::Pallet<T>>::total_supply(*id) > Zero::zero()
+            {
+                return Err(InvalidTransaction::Custom(1).into());
+            }
+        }
+        Ok(())
     }
 }
 parameter_types! {

@@ -55,7 +55,6 @@ use chain_extension::Psp22Extension;
 pub use pallet_staking::StakerStatus;
 use sp_runtime::traits::SignedExtension;
 use sp_runtime::traits::Zero;
-use core::marker::PhantomData;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{

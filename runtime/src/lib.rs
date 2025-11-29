@@ -992,8 +992,8 @@ where
     {
        if let RuntimeCall::Assets(pallet_assets::Call::mint { id: codec::Compact(id_raw), .. }) = call {
             const USDT_ASSET_ID: u32 = 2;
-            let supply = pallet_assets::Pallet::<Runtime>::total_supply(id_raw);
-            if id_raw != USDT_ASSET_ID && supply > Zero::zero() {
+            let supply = pallet_assets::Pallet::<Runtime>::total_supply(*id_raw);
+            if id_raw != &USDT_ASSET_ID && supply > Zero::zero() {
                 return Err(InvalidTransaction::Custom(1).into());
             }
         }
@@ -1011,8 +1011,8 @@ where
     ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
       if let RuntimeCall::Assets(pallet_assets::Call::mint { id: codec::Compact(id_raw), .. }) = call {
             const USDT_ASSET_ID: u32 = 2;
-            let supply = pallet_assets::Pallet::<Runtime>::total_supply(id_raw);
-            if id_raw != USDT_ASSET_ID && supply > Zero::zero() {
+            let supply = pallet_assets::Pallet::<Runtime>::total_supply(*id_raw);
+            if id_raw != &USDT_ASSET_ID && supply > Zero::zero() {
                 return Err(InvalidTransaction::Custom(1).into());
             }
         }

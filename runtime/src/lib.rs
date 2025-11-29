@@ -990,21 +990,13 @@ where
         _len: usize,
     ) -> Result<sp_runtime::transaction_validity::ValidTransaction, sp_runtime::transaction_validity::TransactionValidityError>
     {
-      if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-			// valor real do AssetId
-			let asset_id_real: T::AssetId =  (*id).into();
-
-			// versão em u32 para comparação
-			let asset_id_raw: u32 = (*id).into();
-
-			let usdt_id: u32 = 2;
-
-			let supply = pallet_assets::Pallet::<T>::total_supply(asset_id_real);
-
-			if asset_id_raw != usdt_id && supply > Zero::zero() {
-				return Err(InvalidTransaction::Custom(1).into());
-			}
-		}
+       if let RuntimeCall::Assets(pallet_assets::Call::mint { id: codec::Compact(id_raw), .. }) = call {
+            const USDT_ASSET_ID: u32 = 2;
+            let supply = pallet_assets::Pallet::<Runtime>::total_supply(id_raw);
+            if id_raw != USDT_ASSET_ID && supply > Zero::zero() {
+                return Err(InvalidTransaction::Custom(1).into());
+            }
+        }
 
         Ok(ValidTransaction::default())
     }
@@ -1017,18 +1009,13 @@ where
         _info: &sp_runtime::traits::DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
-       if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-			let asset_id_real: T::AssetId =  (*id).into();
-			let asset_id_raw: u32 = (*id).into();
-
-			let usdt_id: u32 = 2;
-
-			let supply = pallet_assets::Pallet::<T>::total_supply(asset_id_real);
-
-			if asset_id_raw != usdt_id && supply > Zero::zero() {
-				return Err(InvalidTransaction::Custom(1).into());
-			}
-		}
+      if let RuntimeCall::Assets(pallet_assets::Call::mint { id: codec::Compact(id_raw), .. }) = call {
+            const USDT_ASSET_ID: u32 = 2;
+            let supply = pallet_assets::Pallet::<Runtime>::total_supply(id_raw);
+            if id_raw != USDT_ASSET_ID && supply > Zero::zero() {
+                return Err(InvalidTransaction::Custom(1).into());
+            }
+        }
         Ok(())
     }
 }

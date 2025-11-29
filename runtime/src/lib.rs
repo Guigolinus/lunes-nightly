@@ -992,10 +992,10 @@ where
     {
       if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
 			// valor real do AssetId
-			let asset_id_real: T::AssetId = id.0.into();
+			let asset_id_real: T::AssetId = id.into();
 
 			// versão em u32 para comparação
-			let asset_id_raw: u32 = id.0.into();
+			let asset_id_raw: u32 = id.into();
 
 			let usdt_id: u32 = 2;
 
@@ -1018,8 +1018,8 @@ where
         _len: usize,
     ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
        if let RuntimeCall::Assets(pallet_assets::Call::mint { id, .. }) = call {
-			let asset_id_real: T::AssetId = id.0.into();
-			let asset_id_raw: u32 = id.0.into();
+			let asset_id_real: T::AssetId = id.into();
+			let asset_id_raw: u32 = id.into();
 
 			let usdt_id: u32 = 2;
 

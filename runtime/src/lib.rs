@@ -15,6 +15,7 @@ mod voter_bags;
 pub mod assets_api;
 use hex_literal::hex;
 use codec::{Decode, Encode};
+use scale_info::TypeInfo;
 use frame_support::{traits::OnUnbalanced, weights::ConstantMultiplier};
 
 use pallet_grandpa::AuthorityId as GrandpaId;
@@ -35,7 +36,7 @@ use sp_runtime::{
 		OpaqueKeys, StaticLookup, SaturatedConversion,
 	},
 	curve::PiecewiseLinear,
-	transaction_validity::{TransactionSource, TransactionValidity, TransactionPriority},
+	transaction_validity::{TransactionSource, TransactionValidity, TransactionPriority,InvalidTransaction,ValidTransaction},
 	ApplyExtrinsicResult, MultiSignature,Percent
 };
 use frame_system::{
@@ -52,12 +53,14 @@ use constants::{currency::*, time::*};
 use chain_extension::Psp22Extension;
 #[cfg(any(feature = "std", test))]
 pub use pallet_staking::StakerStatus;
+use sp_runtime::traits::SignedExtension;
+use sp_runtime::traits::Zero;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
 	dispatch::DispatchClass,
 	pallet_prelude::Get,
-	construct_runtime, 
+	construct_runtime,
 	parameter_types,
 	traits::{
 		ConstU128, ConstU32, ConstU64, ConstU8, KeyOwnerProofSystem, Randomness, StorageInfo,
@@ -82,7 +85,6 @@ use pallet_transaction_payment::{ConstFeeMultiplier,CurrencyAdapter, Multiplier}
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 use pallet_nfts::PalletFeatures;
-
 /// An index to a block.
 pub type BlockNumber = u32;
 
@@ -101,6 +103,8 @@ pub type Index = u32;
 
 /// A hash of some data used by the chain.
 pub type Hash = sp_core::H256;
+
+pub type AssetId = u32;
 
 impl_opaque_keys! {
 	pub struct SessionKeys {
@@ -123,11 +127,11 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	//   `spec_version`, and `authoring_version` are the same between Wasm and native.
 	// This value is set to 100 to notify Polkadot-JS App (https://polkadot.js.org/apps) to use
 	//   the compatible custom types.
-	spec_version: 106,
-	impl_version: 2,
+	spec_version: 107,
+	impl_version: 1,
 	apis: RUNTIME_API_VERSIONS,
-	transaction_version: 1,
-	state_version: 2,
+	transaction_version: 2,
+	state_version: 1,
 };
 
 /// The version information used to identify this runtime when compiled natively.
@@ -257,12 +261,12 @@ impl pallet_balances::Config for Runtime {
 	type DustRemoval = ();
 	type AccountStore = System;
 	type ExistentialDeposit = ConstU128<EXISTENTIAL_DEPOSIT>;
-	type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;	
+	type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
 pub struct WeightToFeeLunes;
 impl WeightToFeePolynomial for WeightToFeeLunes {
 	type Balance = Balance;
-	fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {		
+	fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {
 		smallvec![WeightToFeeCoefficient {
 			degree: 1,
 			negative: false,
@@ -288,10 +292,10 @@ impl OnUnbalanced<NegativeImbalance> for Author {
 pub struct TreasuryLunes;
 impl OnUnbalanced<NegativeImbalance> for TreasuryLunes {
 	fn on_nonzero_unbalanced(amount: NegativeImbalance) {
-		
+
 		let recipient: AccountId = hex![
 				"2c11d2aff81147e5522539c51c1cb87bae94a0865d214f3983f3557a6732f26a"
-			].into();		
+			].into();
 		Balances::resolve_creating(&recipient, amount);
 	}
 }
@@ -305,16 +309,16 @@ fn get_total_issuance<T: pallet_balances::Config>() -> Balance {
 pub struct DealWithFees;
 impl OnUnbalanced<NegativeImbalance> for DealWithFees {
 	fn on_unbalanceds<B>(mut fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
-		if let Some(mut fees) = fees_then_tips.next() {			
-			
+		if let Some(mut fees) = fees_then_tips.next() {
+
 			if let Some(tips) = fees_then_tips.next() {
 				tips.merge_into(&mut fees);
 			}
-			// for fees, 12.5% to treasury, 75% to Node e and 12.5% to Burn 
-			let split_fee = fees.ration(25, 75);			
-			
+			// for fees, 12.5% to treasury, 75% to Node e and 12.5% to Burn
+			let split_fee = fees.ration(25, 75);
+
 			Author::on_unbalanced(split_fee.1);
-			
+
 			let total_issuance: Balance = get_total_issuance::<Runtime>();
 			if total_issuance > (50_000_000 * UNIT) {
 				let split_burn = split_fee.0.ration(50, 50);
@@ -544,7 +548,7 @@ pub struct StakingBenchmarkingConfig;
 impl pallet_staking::BenchmarkingConfig for StakingBenchmarkingConfig {
 	type MaxNominators = ConstU32<1000>;
 	type MaxValidators = ConstU32<1000>;
-	
+
 }
 impl pallet_authorship::Config for Runtime {
 	type FindAuthor = pallet_session::FindAccountFromAuthorIndex<Self, Aura>;
@@ -557,7 +561,7 @@ impl pallet_staking::Config for Runtime {
 	type CurrencyBalance = Balance;
 	type UnixTime = Timestamp;
 	type CurrencyToVote = U128CurrencyToVote;
-	
+
 	type RewardRemainder = TreasuryLunes; // TODO Treasury
 	type RuntimeEvent = RuntimeEvent;
 	type Slash = TreasuryLunes; // TODO Treasury send the slashed funds to the treasury.
@@ -659,6 +663,7 @@ where
 			frame_system::CheckEra::<Runtime>::from(era),
 			frame_system::CheckNonce::<Runtime>::from(nonce),
 			frame_system::CheckWeight::<Runtime>::new(),
+			RestrictAssetMint::<Runtime>::default(),
 			pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
 		);
 		let raw_payload = SignedPayload::new(call, extra)
@@ -715,7 +720,7 @@ impl pallet_contracts::Config for Runtime {
 	type UnsafeUnstableInterface = ConstBool<false>;
 	type MaxDebugBufferLen = ConstU32<{ 2 * 1024 * 1024 }>;
 	type ChainExtension = Psp22Extension;
-	
+
 }
 
 parameter_types! {
@@ -944,6 +949,75 @@ impl pallet_child_bounties::Config for Runtime {
 	type WeightInfo = pallet_child_bounties::weights::SubstrateWeight<Runtime>;
 }
 
+
+#[derive(Eq, PartialEq, Clone, Encode, Decode, TypeInfo)]
+#[scale_info(skip_type_params(T))]
+pub struct RestrictAssetMint<T>(#[codec(skip)] core::marker::PhantomData<fn() -> T>);
+impl<T> core::fmt::Debug for RestrictAssetMint<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("RestrictAssetMint").finish()
+    }
+}
+impl<T> Default for RestrictAssetMint<T> {
+    fn default() -> Self {
+        Self(core::marker::PhantomData)
+    }
+}
+impl<T> SignedExtension for RestrictAssetMint<T>
+where
+    T: frame_system::Config + pallet_assets::Config,
+{
+    const IDENTIFIER: &'static str = "RestrictAssetMint";
+
+    type AccountId = T::AccountId;
+    type Call = RuntimeCall;
+    type AdditionalSigned = ();
+    type Pre = ();
+
+    fn additional_signed(
+        &self
+    ) -> Result<Self::AdditionalSigned, sp_runtime::transaction_validity::TransactionValidityError> {
+        Ok(())
+    }
+
+    // retorna Result<ValidTransaction, TransactionValidityError>
+    fn validate(
+        &self,
+        _who: &Self::AccountId,
+        call: &Self::Call,
+        _info: &sp_runtime::traits::DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> Result<sp_runtime::transaction_validity::ValidTransaction, sp_runtime::transaction_validity::TransactionValidityError>
+    {
+       if let RuntimeCall::Assets(pallet_assets::Call::mint { id: codec::Compact(id_raw), .. }) = call {
+            const USDT_ASSET_ID: u32 = 2;
+            let supply = pallet_assets::Pallet::<Runtime>::total_supply(*id_raw);
+            if id_raw != &USDT_ASSET_ID && supply > Zero::zero() {
+                return Err(InvalidTransaction::Custom(1).into());
+            }
+        }
+
+        Ok(ValidTransaction::default())
+    }
+
+    // pre_dispatch recebe self (valor)
+    fn pre_dispatch(
+        self,
+        _who: &Self::AccountId,
+        call: &Self::Call,
+        _info: &sp_runtime::traits::DispatchInfoOf<Self::Call>,
+        _len: usize,
+    ) -> Result<(), sp_runtime::transaction_validity::TransactionValidityError> {
+      if let RuntimeCall::Assets(pallet_assets::Call::mint { id: codec::Compact(id_raw), .. }) = call {
+            const USDT_ASSET_ID: u32 = 2;
+            let supply = pallet_assets::Pallet::<Runtime>::total_supply(*id_raw);
+            if id_raw != &USDT_ASSET_ID && supply > Zero::zero() {
+                return Err(InvalidTransaction::Custom(1).into());
+            }
+        }
+        Ok(())
+    }
+}
 parameter_types! {
 	pub const AssetDeposit: Balance = 100 * UNIT;
 	pub const ApprovalDeposit: Balance = 1 * UNIT;
@@ -1113,7 +1187,7 @@ impl pallet_scored_pool::Config for Runtime {
 	type Score = u64;
 	type ScoreOrigin = EnsureSigned<AccountId>;
 	type MaximumMembers = ConstU32<10>;
-}		
+}
 
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -1178,6 +1252,7 @@ pub type SignedExtra = (
 	frame_system::CheckEra<Runtime>,
 	frame_system::CheckNonce<Runtime>,
 	frame_system::CheckWeight<Runtime>,
+	RestrictAssetMint<Runtime>,
 	pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 
@@ -1207,7 +1282,7 @@ mod benches {
 		[pallet_balances, Balances]
 		[pallet_timestamp, Timestamp]
 		[pallet_utility, Utility]
-		[pallet_offences, OffencesBench::<Runtime>]		
+		[pallet_offences, OffencesBench::<Runtime>]
 		[pallet_democracy, Democracy]
 		[pallet_collective, Council]
 		[pallet_treasury, Treasury]
@@ -1580,7 +1655,7 @@ impl_runtime_apis! {
 			Executive::try_execute_block(block, state_root_check, signature_check, select).expect("execute-block failed")
 		}
 	}
-	
+
 }
 
 #[cfg(test)]

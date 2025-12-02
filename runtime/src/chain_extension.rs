@@ -13,7 +13,7 @@ use frame_support::{
         Inspect,
         InspectMetadata,
         Transfer
-        
+
     },
 };
 use pallet_assets::{
@@ -90,7 +90,7 @@ struct Psp22MintInput<AssetId, AccountId, Balance> {
 pub struct Psp22Extension;
 
 fn convert_err(err_msg: &'static str) -> impl FnOnce(DispatchError) -> DispatchError {
-    move |_err| {     
+    move |_err| {
         DispatchError::Other(err_msg)
     }
 }
@@ -178,7 +178,7 @@ where
             )
             .encode()
         }
-    };    
+    };
     env.write(&result, false, None)
         .map_err(convert_err("ChainExtension failed to call PSP22Metadata"))
 }
@@ -215,7 +215,7 @@ where
         }
     }
     .encode();
-    
+
     env.write(&result, false, None)
         .map_err(convert_err("ChainExtension failed to call PSP22 query"))
 }
@@ -240,7 +240,7 @@ where
         true,
     )
     .map_err(convert_err("ChainExtension failed to call transfer"))?;
-    
+
 
     Ok(())
 }
@@ -251,8 +251,8 @@ where
     <T as SysConfig>::AccountId: UncheckedFrom<<T as SysConfig>::Hash> + AsRef<[u8]>,
     E: Ext<T = T>,
 {
-    let mut env = env.buf_in_buf_out();    
-   
+    let mut env = env.buf_in_buf_out();
+
 
     let input: Psp22TransferFromInput<T::AssetId, T::AccountId, T::Balance> =
         env.read_as()?;
@@ -266,7 +266,7 @@ where
             &input.to,
             input.value,
         );
-   
+
     result.map_err(convert_err("ChainExtension failed to call transfer_from"))
 }
 
@@ -277,7 +277,7 @@ where
     E: Ext<T = T>,
 {
     let mut env = env.buf_in_buf_out();
-      
+
 
     let input: Psp22ApproveInput<T::AssetId, T::AccountId, T::Balance> = env.read_as()?;
     let owner = env.ext().caller();
@@ -288,7 +288,7 @@ where
         &input.spender,
         input.value,
     );
-   
+
     result.map_err(convert_err("ChainExtension failed to call approve"))
 }
 
@@ -303,7 +303,7 @@ where
     if input.value.is_zero() {
         return Ok(())
     }
-   
+
 
     let owner = env.ext().caller();
     let mut allowance =
@@ -321,7 +321,7 @@ where
         "ChainExtension failed to call decrease_allowance",
     ))?;
     allowance.saturating_reduce(input.value);
-    if allowance.is_zero() {       
+    if allowance.is_zero() {
         return Ok(())
     }
     <pallet_assets::Pallet<T> as AllowanceMutate<T::AccountId>>::approve(
@@ -333,7 +333,7 @@ where
     .map_err(convert_err(
         "ChainExtension failed to call decrease_allowance",
     ))?;
-   
+
 
     Ok(())
 }
@@ -363,7 +363,7 @@ where
     <T as SysConfig>::AccountId: UncheckedFrom<<T as SysConfig>::Hash> + AsRef<[u8]>,
     E: Ext<T = T>,
 {
-    let mut env = env.buf_in_buf_out();
+    /*let mut env = env.buf_in_buf_out();
     let input: Psp22MintInput<T::AssetId, T::AccountId, T::Balance> = env.read_as()?;
     let caller = env.ext().caller();
 
@@ -372,7 +372,7 @@ where
         input.asset_id.into(),
         T::Lookup::unlookup(input.to.clone()),
         input.value,
-    ).map_err(convert_err("ChainExtension failed to call mint"))?;
+    ).map_err(convert_err("ChainExtension failed to call mint"))?;*/
 
     Ok(())
 }
@@ -403,7 +403,7 @@ where
             FuncId::DecreaseAllowance => decrease_allowance(env)?,
             FuncId::Burn => burn(env)?,
             FuncId::Mint => mint(env)?,
-            
+
         }
 
         Ok(RetVal::Converging(0))

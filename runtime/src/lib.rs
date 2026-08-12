@@ -719,10 +719,33 @@ impl frame_system::offchain::SigningTypes for Runtime {
 }
 
 parameter_types! {
+        // Depósito de storage por item/byte gravado por um contrato. Valores não nulos
+        // (derivados de CONTRACT_DEPOSIT_PER_BYTE) para desincentivar inflar o estado.
         pub const DepositPerItem: Balance = CONTRACT_DEPOSIT_PER_BYTE;
         pub const DepositPerByte: Balance = CONTRACT_DEPOSIT_PER_BYTE;
         pub const DeletionQueueDepth: u32 = 128;
-        pub Schedule: pallet_contracts::Schedule<Runtime> = Default::default();
+
+        /// Correção C (Fase 3): `Schedule` endurecido para o `pallet_contracts`.
+        ///
+        /// Partimos do `Schedule` padrão e fixamos **explicitamente** os limites
+        /// relevantes para mitigação de DoS. Os valores correspondem aos padrões
+        /// conservadores do Substrate nesta versão (polkadot-v0.9.40), porém tornados
+        /// explícitos e auditáveis para evitar regressões silenciosas caso os padrões
+        /// upstream mudem em futuras atualizações.
+        pub MySchedule: pallet_contracts::Schedule<Runtime> = {
+                let mut schedule = pallet_contracts::Schedule::<Runtime>::default();
+                schedule.limits.event_topics = 4;        // nº máx. de tópicos por evento
+                schedule.limits.globals = 256;           // nº máx. de variáveis globais Wasm
+                schedule.limits.locals = 1024;           // nº máx. de variáveis locais por função
+                schedule.limits.parameters = 128;        // nº máx. de parâmetros por função
+                schedule.limits.memory_pages = 16;       // 16 páginas * 64 KiB = 1 MiB de memória linear
+                schedule.limits.table_size = 4096;       // tamanho máx. da tabela de funções
+                schedule.limits.br_table_size = 256;     // tamanho máx. de uma br_table
+                schedule.limits.subject_len = 32;        // tamanho máx. do subject de aleatoriedade
+                schedule.limits.payload_len = 16 * 1024; // tamanho máx. do payload de eventos (16 KiB)
+                schedule
+        };
+
         // The lazy deletion runs inside on_initialize.
         pub DeletionWeightLimit: Weight = Perbill::from_percent(10) * RuntimeBlockWeights::get().max_block; // 40ms
 }
@@ -748,10 +771,14 @@ impl pallet_contracts::Config for Runtime {
         //type ChainExtension = ();
         type DeletionQueueDepth = DeletionQueueDepth;
         type DeletionWeightLimit = DeletionWeightLimit;
-        type Schedule = Schedule;
+        // Correção C (Fase 3): usa o Schedule endurecido com limites explícitos.
+        type Schedule = MySchedule;
         type AddressGenerator = pallet_contracts::DefaultAddressGenerator;
+        // Tamanho máx. de código de contrato (~123 KiB) — limita superfície de ataque.
         type MaxCodeLen = ConstU32<{ 123 * 1024 }>;
+        // Comprimento máx. de chave de storage.
         type MaxStorageKeyLen = ConstU32<128>;
+        // Mantém desabilitada a interface instável/insegura de contratos (segurança).
         type UnsafeUnstableInterface = ConstBool<false>;
         type MaxDebugBufferLen = ConstU32<{ 2 * 1024 * 1024 }>;
         type ChainExtension = Psp22Extension;

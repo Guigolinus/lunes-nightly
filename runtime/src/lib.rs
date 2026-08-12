@@ -232,7 +232,12 @@ impl pallet_grandpa::Config for Runtime {
 
 	type WeightInfo = ();
 	type MaxAuthorities = ConstU32<32>;
-	type MaxSetIdSessionEntries = ConstU64<0>;
+	// Mantém o histórico de `set_id` -> `session_index` das últimas 168 sessões.
+	// Com `ConstU64<0>` NENHUM histórico era mantido, tornando impossível validar
+	// provas de equívoco (equivocation proofs) do GRANDPA — um validador
+	// malicioso poderia votar em forks conflitantes sem sofrer slashing.
+	// 168 sessões cobrem uma janela suficiente para reportar equívocos.
+	type MaxSetIdSessionEntries = ConstU64<168>;
 
 	type KeyOwnerProof = sp_core::Void;
 	type EquivocationReportSystem = ();
@@ -1748,5 +1753,23 @@ mod weight_fee_tests {
 				> WeightToFeeLunes::weight_to_fee(&no_proof),
 			"o proof_size deve contribuir para a taxa"
 		);
+	}
+}
+
+#[cfg(test)]
+mod grandpa_config_tests {
+	use super::*;
+
+	/// Garante que o histórico de sessões do GRANDPA está habilitado, permitindo
+	/// a validação de provas de equívoco (equivocation) e o slashing associado.
+	#[test]
+	fn grandpa_max_set_id_session_entries_is_enabled() {
+		let entries =
+			<<Runtime as pallet_grandpa::Config>::MaxSetIdSessionEntries as Get<u64>>::get();
+		assert!(
+			entries > 0,
+			"MaxSetIdSessionEntries deve ser > 0 para permitir detecção de equívoco; got {entries}"
+		);
+		assert_eq!(entries, 168);
 	}
 }

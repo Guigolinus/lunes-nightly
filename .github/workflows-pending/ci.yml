@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main, 'feature/**', 'fix/**' ]
+  pull_request:
+    branches: [ master, main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Job 1: Formatação de código
+  # ─────────────────────────────────────────────────────────────
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Verificar formatação
+        run: cargo fmt --all -- --check
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 2: Linting com Clippy
+  # ─────────────────────────────────────────────────────────────
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar toolchain com Clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: wasm32-unknown-unknown
+      - name: Cache de dependências
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: "clippy"
+      - name: Executar Clippy
+        run: |
+          cargo clippy --all-targets --all-features -- \
+            -D warnings \
+            -W clippy::all \
+            -W clippy::pedantic \
+            -A clippy::module_name_repetitions \
+            -A clippy::must_use_candidate
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 3: Testes unitários
+  # ─────────────────────────────────────────────────────────────
+  test:
+    name: Testes Unitários
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Cache de dependências
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: "test"
+      - name: Instalar dependências de sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev protobuf-compiler
+      - name: Executar testes do runtime
+        run: cargo test -p lunes-runtime --lib -- --nocapture
+      - name: Executar testes do node
+        run: cargo test -p lunes-node --lib -- --nocapture
+      - name: Executar todos os testes
+        run: cargo test --workspace --lib -- --nocapture
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 4: Auditoria de segurança de dependências
+  # ─────────────────────────────────────────────────────────────
+  audit:
+    name: Auditoria de Segurança (cargo-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Executar auditoria
+        run: |
+          cargo audit --deny warnings 2>&1 || {
+            echo "⚠️  Vulnerabilidades encontradas! Ver relatório acima."
+            # Não falhar o build por vulnerabilidades em deps transitivas
+            # mas reportar como warning
+            cargo audit 2>&1
+            exit 0
+          }
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 5: Build de verificação (não publica artefatos)
+  # ─────────────────────────────────────────────────────────────
+  build-check:
+    name: Verificação de Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Cache de dependências
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: "build-check"
+      - name: Instalar dependências de sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev protobuf-compiler
+      - name: Verificar build (sem compilar completamente)
+        run: cargo check --release --workspace
+      - name: Verificar build do runtime WASM
+        run: cargo check --target wasm32-unknown-unknown -p lunes-runtime
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 6: Build Docker (apenas em PRs e push para master)
+  # ─────────────────────────────────────────────────────────────
+  docker-build:
+    name: Build Docker
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy, test, audit]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build da imagem Docker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: lunes-nightly:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

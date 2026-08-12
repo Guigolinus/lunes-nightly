@@ -13,6 +13,8 @@ pub mod constants;
 mod voter_bags;
 /// Runtime API definition for assets.
 pub mod assets_api;
+/// Pesos customizados gerados via benchmarking (Fase 3 – infraestrutura).
+pub mod weights;
 use hex_literal::hex;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -204,7 +206,9 @@ impl frame_system::Config for Runtime {
         /// The data to be stored in an account.
         type AccountData = pallet_balances::AccountData<Balance>;
         /// Weight information for the extrinsics of this pallet.
-        type SystemWeightInfo = ();
+        /// Correção B (Fase 3): usa pesos reais do benchmarking do Substrate upstream
+        /// em vez de pesos constantes artificiais (`()`).
+        type SystemWeightInfo = frame_system::weights::SubstrateWeight<Runtime>;
         /// This is used as an identifier of the chain. 42 is the generic substrate prefix.
         type SS58Prefix = SS58Prefix;
         /// The set code logic, just the default since we're not a parachain.
@@ -231,7 +235,11 @@ impl pallet_aura::Config for Runtime {
 impl pallet_grandpa::Config for Runtime {
         type RuntimeEvent = RuntimeEvent;
 
-        type WeightInfo = ();
+        // TODO (Fase 3 – benchmarking): o pallet_grandpa não expõe `weights::SubstrateWeight`
+        // nesta versão do Substrate. Gerar pesos dedicados via:
+        //   cargo run --release --features runtime-benchmarks -- benchmark pallet \
+        //     --pallet=pallet_grandpa --extrinsic='*' --output=runtime/src/weights/pallet_grandpa.rs
+        type WeightInfo = (); // Substituir após executar benchmarks em hardware de produção
         type MaxAuthorities = ConstU32<32>;
         type MaxSetIdSessionEntries = ConstU64<0>;
 
@@ -244,7 +252,8 @@ impl pallet_timestamp::Config for Runtime {
         type Moment = u64;
         type OnTimestampSet = Aura;
         type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
-        type WeightInfo = ();
+        /// Correção B (Fase 3): pesos reais do benchmarking em vez de `()`.
+        type WeightInfo = pallet_timestamp::weights::SubstrateWeight<Runtime>;
 }
 
 /// Existential deposit.

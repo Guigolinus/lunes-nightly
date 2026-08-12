@@ -13,6 +13,8 @@ pub mod constants;
 mod voter_bags;
 /// Runtime API definition for assets.
 pub mod assets_api;
+/// Runtime migrations (OnRuntimeUpgrade framework).
+mod migrations;
 use hex_literal::hex;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -1268,6 +1270,7 @@ pub type Executive = frame_executive::Executive<
 	frame_system::ChainContext<Runtime>,
 	Runtime,
 	AllPalletsWithSystem,
+	migrations::Migrations,
 >;
 
 #[cfg(feature = "runtime-benchmarks")]

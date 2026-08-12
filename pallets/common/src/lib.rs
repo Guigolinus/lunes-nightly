@@ -19,7 +19,13 @@ pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
 
+	/// Versão de armazenamento atual do pallet.
+	/// Incrementar SEMPRE que houver mudança de schema no storage.
+	/// Usar com `StorageVersion` do frame_support para migrations seguras.
+	const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
+
 	#[pallet::pallet]
+	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.

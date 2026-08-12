@@ -217,3 +217,8 @@ try-runtime = [
 	"pallet-atomic-swap/try-runtime",
 ]
 
+# Feature futura para PolkaVM – não ativa nada agora, apenas prepara a flag.
+# Será habilitada quando migrar para polkadot-sdk com suporte a PolkaVM
+# (target RISC-V para contratos inteligentes). Ver docs/MIGRATION_GUIDE.md.
+polkavm = []
+

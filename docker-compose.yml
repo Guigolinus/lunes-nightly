@@ -1,12 +1,35 @@
-version: "3.2"
+version: '3.8'
 
 services:
-  node:
-    container_name: node-lunes
-    build: .
+  lunes-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lunes-nightly:local
+    container_name: lunes-node
     ports:
-      - "9944:9944"
+      - "30333:30333"   # P2P
+      - "9933:9933"     # RPC HTTP
+      - "9944:9944"     # RPC WebSocket
+      - "9615:9615"     # Prometheus metrics
     volumes:
-      - .:/var/www/lunes-nightly
-    #command: bash -c "ls && ./lunes-node --dev --ws-external"
-    command: bash -c "./lunes-node --chain  lunes-staging-raw.json -d /data/validator --name validator2 --validator --port 30333 --ws-port 9944 --rpc-port 9933"
+      - lunes-data:/data
+    command:
+      - "--dev"
+      - "--ws-external"
+      - "--rpc-external"
+      - "--rpc-cors=all"
+      - "--prometheus-external"
+      - "-d"
+      - "/data"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9933/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  lunes-data:
+    driver: local

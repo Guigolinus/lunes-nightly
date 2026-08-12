@@ -1,0 +1,13 @@
+# Proprietários de código – revisão obrigatória para áreas críticas
+
+# Runtime (consenso, economia, segurança)
+/runtime/                   @Guigolinus
+/pallets/                   @Guigolinus
+
+# Node e configuração de rede
+/node/                      @Guigolinus
+
+# CI/CD e infraestrutura
+/.github/                   @Guigolinus
+/Dockerfile                 @Guigolinus
+/docker-compose.yml         @Guigolinus

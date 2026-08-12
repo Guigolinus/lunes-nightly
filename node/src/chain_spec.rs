@@ -50,6 +50,32 @@ pub fn authority_keys_from_seed(s: &str) -> (AccountId,AuraId, GrandpaId) {
 	(get_account_id_from_seed::<sr25519::Public>(s),get_from_seed::<AuraId>(s), get_from_seed::<GrandpaId>(s))
 }
 
+/// Retorna a chave root (sudo) da rede.
+///
+/// Antes esta chave era um literal `hex!` fixo no código-fonte (exposto no
+/// repositório público), o que representa um risco de segurança grave: qualquer
+/// pessoa com acesso ao código conhecia o endereço root da produção.
+///
+/// Agora a chave é obtida da variável de ambiente `LUNES_ROOT_KEY`, que deve
+/// conter os 32 bytes do `AccountId` em hexadecimal (com ou sem prefixo `0x`).
+/// Caso a variável não esteja definida, utiliza a conta de desenvolvimento
+/// `Alice` como fallback seguro — evitando embutir uma chave de produção fixa.
+fn get_root_key() -> AccountId {
+	match std::env::var("LUNES_ROOT_KEY") {
+		Ok(raw) => {
+			let raw = raw.trim();
+			let cleaned = raw.strip_prefix("0x").unwrap_or(raw);
+			let bytes = hex::decode(cleaned)
+				.expect("LUNES_ROOT_KEY deve ser uma string hexadecimal válida");
+			let arr: [u8; 32] = bytes
+				.try_into()
+				.expect("LUNES_ROOT_KEY deve conter exatamente 32 bytes (64 caracteres hex)");
+			AccountId::from(arr)
+		}
+		Err(_) => get_account_id_from_seed::<sr25519::Public>("Alice"),
+	}
+}
+
 pub fn development_config() -> Result<ChainSpec, String> {
 	// Give your base currency a unit name and decimal places
 	let mut properties = sc_chain_spec::Properties::new();
@@ -227,12 +253,9 @@ fn staging_network_config_genesis() -> GenesisConfig {
 		)
 	];
 
-	// generated with secret: subkey inspect "$secret"/fir
-	let root_key: AccountId = hex![
-		// 5CfptqCCc5Y5xnqVSz8FQNKHXnmBPfRotrPJL1FbXH6MLNxg
-		"1ac9475ee6d6446eaa9657cd6b1bbef5c94b041b308dfcd59bad0f97ef86b849"
-	]
-	.into();
+	// A chave root agora vem da env var LUNES_ROOT_KEY (fallback: Alice em dev).
+	// Removida a chave hardcoded que estava exposta no código-fonte público.
+	let root_key: AccountId = get_root_key();
 	//c<AccountId>, <Balnance>
 	let mut endowed_accounts: Vec<(sp_runtime::AccountId32, Balance)> = vec![];
 	endowed_accounts.push((hex!["663061efaa2334649267572ad07bf9004e0343bccba8569fdab0bddf570a5249"].into(), INITIAL_COLLATOR_STAKING));
@@ -278,12 +301,9 @@ fn staging_test_network_config_genesis() -> GenesisConfig {
 		)
 	];
 
-	// generated with secret: subkey inspect "$secret"/fir
-	let root_key: AccountId = hex![
-		// 5CfptqCCc5Y5xnqVSz8FQNKHXnmBPfRotrPJL1FbXH6MLNxg
-		"1ac9475ee6d6446eaa9657cd6b1bbef5c94b041b308dfcd59bad0f97ef86b849"
-	]
-	.into();
+	// A chave root agora vem da env var LUNES_ROOT_KEY (fallback: Alice em dev).
+	// Removida a chave hardcoded que estava exposta no código-fonte público.
+	let root_key: AccountId = get_root_key();
 	//c<AccountId>, <Balnance>
 	let mut endowed_accounts: Vec<(sp_runtime::AccountId32, Balance)> = vec![];
 	endowed_accounts.push((hex!["663061efaa2334649267572ad07bf9004e0343bccba8569fdab0bddf570a5249"].into(), INITIAL_COLLATOR_STAKING));
@@ -390,4 +410,37 @@ fn mainnet_genesis(
 	}
 
 
+}
+
+#[cfg(test)]
+mod root_key_tests {
+	use super::*;
+	use std::sync::Mutex;
+
+	// Serializa os testes que mexem na env var (rodam em paralelo e compartilham
+	// o ambiente do processo).
+	static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+	/// Com LUNES_ROOT_KEY definida, get_root_key decodifica exatamente aquele
+	/// AccountId (aceitando o prefixo 0x).
+	#[test]
+	fn get_root_key_uses_env_var_when_set() {
+		let _guard = ENV_LOCK.lock().unwrap();
+		let key_hex = "1ac9475ee6d6446eaa9657cd6b1bbef5c94b041b308dfcd59bad0f97ef86b849";
+		std::env::set_var("LUNES_ROOT_KEY", format!("0x{key_hex}"));
+		let expected: AccountId =
+			hex!["1ac9475ee6d6446eaa9657cd6b1bbef5c94b041b308dfcd59bad0f97ef86b849"].into();
+		assert_eq!(get_root_key(), expected);
+		std::env::remove_var("LUNES_ROOT_KEY");
+	}
+
+	/// Sem a env var, get_root_key cai no fallback seguro (Alice), jamais em uma
+	/// chave de produção hardcoded.
+	#[test]
+	fn get_root_key_falls_back_to_alice_without_env_var() {
+		let _guard = ENV_LOCK.lock().unwrap();
+		std::env::remove_var("LUNES_ROOT_KEY");
+		let alice = get_account_id_from_seed::<sr25519::Public>("Alice");
+		assert_eq!(get_root_key(), alice);
+	}
 }

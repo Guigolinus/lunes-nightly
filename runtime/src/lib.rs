@@ -42,7 +42,6 @@ use sp_runtime::{
 use frame_system::{
 	EnsureRoot, EnsureSigned, EnsureWithSuccess,
 };
-use smallvec::smallvec;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -72,7 +71,7 @@ pub use frame_support::{
 		constants::{
 			BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND,WEIGHT_REF_TIME_PER_MILLIS,
 		},
-		Weight,WeightToFeeCoefficient,WeightToFeeCoefficients, WeightToFeePolynomial,
+		Weight, WeightToFee,
 	},
 	StorageValue,PalletId
 };
@@ -233,7 +232,12 @@ impl pallet_grandpa::Config for Runtime {
 
 	type WeightInfo = ();
 	type MaxAuthorities = ConstU32<32>;
-	type MaxSetIdSessionEntries = ConstU64<0>;
+	// Mantém o histórico de `set_id` -> `session_index` das últimas 168 sessões.
+	// Com `ConstU64<0>` NENHUM histórico era mantido, tornando impossível validar
+	// provas de equívoco (equivocation proofs) do GRANDPA — um validador
+	// malicioso poderia votar em forks conflitantes sem sofrer slashing.
+	// 168 sessões cobrem uma janela suficiente para reportar equívocos.
+	type MaxSetIdSessionEntries = ConstU64<168>;
 
 	type KeyOwnerProof = sp_core::Void;
 	type EquivocationReportSystem = ();
@@ -263,16 +267,34 @@ impl pallet_balances::Config for Runtime {
 	type ExistentialDeposit = ConstU128<EXISTENTIAL_DEPOSIT>;
 	type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
+/// Multiplicador aplicado ao componente `proof_size` do peso ao convertê-lo em taxa.
+pub const PROOF_SIZE_FEE_MULTIPLIER: Balance = 1;
+/// Taxa mínima absoluta cobrada por qualquer extrínseco. Garante que nenhuma
+/// transação possa ser executada com taxa zero (proteção contra DoS/spam).
+pub const MINIMUM_WEIGHT_FEE: Balance = 1_000;
+
+/// Conversão de peso em taxa para a Lunes.
+///
+/// A implementação anterior usava `WeightToFeePolynomial` com
+/// `coeff_integer: 1 / 100`. Em aritmética inteira `1 / 100 == 0`, portanto o
+/// coeficiente era sempre `0` e TODA transação ficava com taxa zero
+/// (vulnerabilidade crítica de DoS/spam — a rede podia ser inundada sem custo).
+///
+/// Esta implementação:
+///  * cobra `ref_time` linearmente;
+///  * inclui o custo de `proof_size` (via `PROOF_SIZE_FEE_MULTIPLIER`);
+///  * aplica um piso `MINIMUM_WEIGHT_FEE` de modo que a taxa NUNCA seja zero;
+///  * usa aritmética saturante para evitar overflow.
 pub struct WeightToFeeLunes;
-impl WeightToFeePolynomial for WeightToFeeLunes {
+impl WeightToFee for WeightToFeeLunes {
 	type Balance = Balance;
-	fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {
-		smallvec![WeightToFeeCoefficient {
-			degree: 1,
-			negative: false,
-			coeff_frac:  Perbill::zero(),
-			coeff_integer: 1 / 100,
-		}]
+	fn weight_to_fee(weight: &Weight) -> Self::Balance {
+		let ref_time_fee = weight.ref_time() as Balance;
+		let proof_size_fee =
+			(weight.proof_size() as Balance).saturating_mul(PROOF_SIZE_FEE_MULTIPLIER);
+		ref_time_fee
+			.saturating_add(proof_size_fee)
+			.max(MINIMUM_WEIGHT_FEE)
 	}
 }
 parameter_types! {
@@ -1692,5 +1714,62 @@ mod tests {
 		assert!(
 			whitelist.contains("26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7")
 		);
+	}
+}
+
+#[cfg(test)]
+mod weight_fee_tests {
+	use super::*;
+
+	/// A regressão principal: a taxa nunca pode ser zero (impede spam/DoS gratuito).
+	#[test]
+	fn weight_to_fee_never_returns_zero() {
+		let w = Weight::from_parts(1, 0);
+		let fee = WeightToFeeLunes::weight_to_fee(&w);
+		assert!(fee >= MINIMUM_WEIGHT_FEE, "a taxa não pode ficar abaixo do piso: {fee}");
+		assert!(fee > 0, "a taxa nunca pode ser zero");
+		let zero = Weight::from_parts(0, 0);
+		assert_eq!(WeightToFeeLunes::weight_to_fee(&zero), MINIMUM_WEIGHT_FEE);
+	}
+
+	/// A taxa deve crescer com o `ref_time` consumido.
+	#[test]
+	fn weight_to_fee_scales_with_ref_time() {
+		let small = Weight::from_parts(1_000, 0);
+		let large = Weight::from_parts(1_000_000, 0);
+		assert!(
+			WeightToFeeLunes::weight_to_fee(&large) > WeightToFeeLunes::weight_to_fee(&small),
+			"taxa deve aumentar com o ref_time"
+		);
+	}
+
+	/// O componente `proof_size` também deve ser cobrado.
+	#[test]
+	fn weight_to_fee_includes_proof_size() {
+		let no_proof = Weight::from_parts(1_000_000, 0);
+		let with_proof = Weight::from_parts(1_000_000, 500_000);
+		assert!(
+			WeightToFeeLunes::weight_to_fee(&with_proof)
+				> WeightToFeeLunes::weight_to_fee(&no_proof),
+			"o proof_size deve contribuir para a taxa"
+		);
+	}
+}
+
+#[cfg(test)]
+mod grandpa_config_tests {
+	use super::*;
+
+	/// Garante que o histórico de sessões do GRANDPA está habilitado, permitindo
+	/// a validação de provas de equívoco (equivocation) e o slashing associado.
+	#[test]
+	fn grandpa_max_set_id_session_entries_is_enabled() {
+		let entries =
+			<<Runtime as pallet_grandpa::Config>::MaxSetIdSessionEntries as Get<u64>>::get();
+		assert!(
+			entries > 0,
+			"MaxSetIdSessionEntries deve ser > 0 para permitir detecção de equívoco; got {entries}"
+		);
+		assert_eq!(entries, 168);
 	}
 }

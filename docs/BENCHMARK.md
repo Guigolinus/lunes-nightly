@@ -106,9 +106,9 @@ Capacidade por tipo de operação (limite por peso, blocos cheios):
 | Operação | Peso total/op (ref_time) | Ops por bloco | Ops por segundo |
 |----------|--------------------------|---------------|-----------------|
 | Transferência simples | 274.090.000 | ≈ 5.472 | ≈ 912 |
-| Mint de NFT | 675.088.000 | ≈ 2.222 | ≈ 370 |
-| Chamada de contrato | 3.797.368.000 | ≈ 394 | ≈ 65 |
-| Deploy de contrato (~4 KB) | 7.379.508.548 | ≈ 203 | ≈ 33 |
+| Mint de NFT | 675.088.000 | ≈ 2.221 | ≈ 370 |
+| Chamada de contrato | 3.797.368.000 | ≈ 395 | ≈ 66 |
+| Deploy de contrato (~4 KB) | 7.379.508.548 | ≈ 203 | ≈ 34 |
 
 *(peso total/op = peso base 99.840.000 + peso do dispatch medido)*
 

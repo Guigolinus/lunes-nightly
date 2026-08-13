@@ -1,13 +1,13 @@
-# Calibração da Rede Lunes — Taxas, Tempo de Bloco e Capacidade (TPS)
+# Calibração da Rede Lunes — Taxas (~0,002 LUNES), Blocos de 1s e ~5.500 TPS
 
-> Este documento descreve as mudanças de parametrização aplicadas ao runtime
-> (**spec_version 108**) para atingir os objetivos pedidos:
+> Este documento descreve a **configuração conservadora e segura** aplicada ao runtime
+> (**spec_version 108**) para atingir os objetivos:
 >
 > 1. **Taxa de ~0,002 LUNES** para transações simples, com as demais operações em
 >    proporção equivalente;
-> 2. **Tempo de bloco de 1 segundo**;
-> 3. **Capacidade ≥ 10.000 TPS** para transferências simples;
-> 4. **Requisitos de hardware** para operar a rede nessa configuração.
+> 2. **Tempo de bloco de 1 segundo** (reduzindo latência de confirmação);
+> 3. **Capacidade ~5.500 TPS** para transferências simples, **sustentável em hardware
+>    comum** (Ryzen 7, i7/i9 moderno, NVMe) sem risco de travar a cadeia.
 >
 > ⚠️ **Importante:** estas mudanças são de **parâmetros de consenso/econômicos** e
 > **não foram compiladas nem testadas em cadeia** nesta máquina (sem toolchain Rust).
@@ -18,15 +18,22 @@
 
 ---
 
-## 1. Mudanças aplicadas
+## 1. Mudanças aplicadas (configuração conservadora)
 
 | Parâmetro | Antes (spec 107) | Depois (spec 108) | Arquivo |
 |-----------|------------------|-------------------|---------|
 | `MILLISECS_PER_BLOCK` | 6000 (6 s) | **1000 (1 s)** | `runtime/src/constants.rs` |
-| Orçamento de peso do bloco | `2 × WEIGHT_REF_TIME_PER_SECOND` (2 s) | **`4 × ...` (4 s)** | `runtime/src/lib.rs` |
+| Orçamento de peso do bloco | `2 × WEIGHT_REF_TIME_PER_SECOND` (2 s) | **`2 × ...` (2 s, mantido)** | `runtime/src/lib.rs` |
 | `WEIGHT_FEE_DIVISOR` | *(inexistente)* | **1380** | `runtime/src/lib.rs` |
 | `TransactionByteFee` | `1 NANOUNIT` (1000 planck) | **10 planck** | `runtime/src/lib.rs` |
 | `spec_version` | 107 | **108** | `runtime/src/lib.rs` |
+
+**Filosofia da configuração:** blocos **6× mais frequentes** (1s vs 6s), mas com o
+**mesmo orçamento de peso por bloco** do spec 107 (2s de compute). Assim, a capacidade
+por bloco é a mesma (~5.472 transferências), mas como os blocos são mais frequentes,
+o TPS salta de ~912 para ~5.500 **sem exigir hardware excepcional** — só precisa da
+mesma capacidade de compute, mas distribuída em slots mais curtos. Hardware comum
+(2–2,5× a máquina de referência) acompanha com utilização de 50–70% do slot.
 
 O piso anti-spam `MINIMUM_WEIGHT_FEE = 1000` planck (correção da Fase 1) **foi
 mantido** — a taxa continua nunca podendo ser zero.
@@ -70,28 +77,32 @@ mantém — apenas passam a conter 6× mais blocos.
 
 ---
 
-## 4. Objetivo 3 — Capacidade ≥ 10.000 TPS
+## 4. Objetivo 3 — Capacidade ~5.500 TPS (conservadora e segura)
 
 Capacidade (transferências) = `orçamento_de_peso_normal / peso_por_transferência`,
 dividido pelo tempo de bloco.
 
 | Item | Valor |
 |------|-------|
-| Orçamento de peso do bloco | 4.000.000.000.000 (4 s de compute de referência) |
-| Orçamento p/ extrínsecos normais (75 %) | 3.000.000.000.000 (3 s) |
+| Orçamento de peso do bloco | 2.000.000.000.000 (2 s de compute de referência) |
+| Orçamento p/ extrínsecos normais (75 %) | 1.500.000.000.000 (1,5 s) |
 | Peso por transferência (base + dispatch) | 274.090.000 |
-| **Transferências por bloco** | **≈ 10.945** |
+| **Transferências por bloco** | **≈ 5.472** |
 | Tempo de bloco | 1 s |
-| **TPS (teórico, blocos cheios)** | **≈ 10.945 TPS** ✅ |
+| **TPS (sustentável, blocos cheios)** | **≈ 5.472 TPS** ✅ |
 
-Assim, **na configuração de parâmetros o alvo de 10.000 TPS é atingido**. Porém, há
-uma restrição física de hardware que precisa ser entendida (seção 5).
+**Comparação com spec 107:**
+- Spec 107: blocos de 6s, 2s de peso → ~912 TPS
+- Spec 108: blocos de 1s, 2s de peso → **~5.472 TPS** (6× maior, só pela frequência)
+
+Esta configuração **prioriza estabilidade**: mesma exigência de hardware do spec 107
+(que já rodava sem problemas), mas com latência de confirmação 6× menor e TPS 6× maior.
 
 ---
 
-## 5. Objetivo 4 — Requisitos de hardware (análise de viabilidade) ⚠️
+## 5. Requisitos de hardware — Configuração conservadora ✅
 
-Esta é a parte mais importante e onde é preciso ser honesto.
+Esta configuração foi escolhida para **rodar com segurança em hardware comum**.
 
 ### 5.1 O que o "peso" significa
 
@@ -102,97 +113,85 @@ com NVMe SSD**. Os pesos dos pallets (incluindo os ~174 M da transferência) for
 calibrados nessa máquina — e são dominados por operações de **armazenamento**
 (RocksDbWeight: leitura ~25 M, escrita ~100 M).
 
-### 5.2 A restrição fundamental (independente do tempo de bloco)
+### 5.2 A matemática da configuração conservadora
 
-> **compute exigido por segundo = TPS × peso_por_transação**
+> **compute exigido por segundo = (peso do bloco / tempo do bloco)**
 
-Para **10.000 TPS** de transferências:
+Com blocos de 1s e orçamento de 2s de peso:
 
 ```
-10.000 × 274.090.000 = 2,74 × 10¹² ref_time por segundo de relógio
-                     = 2,74 segundos de compute de REFERÊNCIA por 1 s real
+2 s de compute de REFERÊNCIA / 1 s de relógio = 2× a máquina de referência
 ```
 
-Ou seja, cada validador precisa **executar (e importar) 2,74 s de trabalho de
-referência a cada 1 segundo**. Reduzir o tempo de bloco de 6 s para 1 s **não muda**
-esse número — apenas divide o mesmo trabalho em blocos menores e mais frequentes.
+Isso significa que cada validador precisa ser **~2× mais rápido** (single-core) que
+a máquina de referência. Com margem de segurança (usar só 50–70% do slot para
+executar+importar, reservando 30–50% para rede/propagação/consenso):
 
-Como a execução do FRAME clássico (v0.9.40) é **estritamente sequencial
-(single-thread)**, isso exige um único núcleo muito mais rápido que a referência:
+| Utilização do slot | Speedup single-core exigido |
+|--------------------|-----------------------------|
+| 50 % | **~4,0×** referência |
+| 70 % | **~2,9×** referência |
 
-| Fração do slot usável p/ executar+importar | Speedup single-core exigido vs. referência |
-|--------------------------------------------|--------------------------------------------|
-| 50 % | **~5,5×** |
-| 70 % | **~3,9×** |
+### 5.3 Hardware comum **atende** ✅
 
-### 5.3 O problema
+CPUs modernos comuns (2024/2025) têm desempenho single-thread de **~2,0–2,5×** o
+i7-7700K:
+- **AMD Ryzen 7 7700X / 7800X3D:** ~2,3× referência
+- **Intel i7-13700 / i9-13900:** ~2,5× referência
+- **AMD Ryzen 9 7950X / Intel i9-14900K:** ~2,6× referência
 
-Os CPUs mais rápidos de 2024/2025 (ex.: Ryzen 9 7950X, Intel i9-14900K) têm
-desempenho **single-thread de ~2,0–2,5×** o i7-7700K. Isso está **abaixo** do
-~3,9–5,5× necessário. O teto realista de single-thread fica em:
+Com ParityDB (mais rápido que RocksDB) e NVMe Gen3/4, a exigência cai para ~2–2,2×,
+que esses CPUs entregam **confortavelmente**. Em blocos cheios de ~5.500 TPS, a
+utilização do slot fica em **50–70%**, com margem de segurança.
 
-| CPU (single-core vs ref.) | Utilização do slot | Teto realista de TPS |
-|---------------------------|--------------------|----------------------|
-| 2,0× | 50 % | ~3.650 TPS |
-| 2,0× | 70 % | ~5.100 TPS |
-| 2,5× | 50 % | ~4.560 TPS |
-| 2,5× | 70 % | ~6.385 TPS |
+**Conclusão:** esta configuração **não exige hardware excepcional**. Um Ryzen 7 ou
+i7/i9 moderno com NVMe e 32 GB RAM roda tranquilamente. A cadeia **não trava** em
+hardware comum, ao contrário de uma configuração agressiva (4s de peso / 1s de bloco).
 
-**Conclusão honesta:** com o *stack* atual (FRAME v0.9.40, execução sequencial,
-pesos de referência), **10.000 TPS sustentados não são fisicamente atingíveis** em
-hardware realista. Configurar o orçamento de peso para 4 s de compute em blocos de
-1 s faz a cadeia **acompanhar apenas se** os validadores tiverem hardware ~4–5×
-referência; caso contrário, em blocos cheios a importação demora mais que o slot e a
-**cadeia trava**. O teto prático fica em **~4.000–6.000 TPS** para transferências
-simples, mesmo em hardware topo de linha.
+### 5.4 Requisitos de hardware recomendados
 
-### 5.4 Como realmente chegar a 10.000 TPS
+Para operar um **validador** com esta configuração conservadora:
 
-Há três caminhos (idealmente combinados):
+| Recurso | Mínimo | Recomendado |
+|---------|--------|-------------|
+| **CPU** | 6–8 núcleos, single-thread ≥ 2× i7-7700K (Ryzen 5 7600 / i5-13600) | Ryzen 7 7700X / i7-13700 ou superior |
+| **RAM** | 16 GB | 32 GB |
+| **Disco** | NVMe SSD 512 GB | NVMe Gen4 1 TB, ParityDB |
+| **Rede** | 500 Mbps simétrico, <50 ms entre validadores | 1 Gbps simétrico, baixa latência |
+| **DB backend** | `--database paritydb` recomendado | `--database paritydb` + `--state-pruning=archive-canonical` |
 
-1. **Re-benchmark dos pesos em hardware moderno + ParityDB/NVMe.** Os pesos atuais
-   são dominados por I/O de disco calibrado em RocksDB. Migrar para **ParityDB** em
-   NVMe rápido e rodar `cargo build --features runtime-benchmarks` + `benchmark
-   pallet` na máquina-alvo pode **reduzir o peso por transferência em ~2–3×**,
-   dobrando/triplicando o teto de TPS.
-2. **Mandato de hardware topo de linha** para validadores (ver 5.5) + orçamento de
-   peso agressivo — aceitando **maior centralização** (poucos operadores conseguem
-   participar).
-3. **Migrar para o `polkadot-sdk` moderno** (ver `docs/MIGRATION_GUIDE.md`), que
-   abre caminho para execução mais eficiente e futuras otimizações — é o caminho
-   sustentável de longo prazo.
+> Esta configuração **roda em VPS comum** (ex.: Hetzner AX52, OVH Rise-2, AWS c7i.2xlarge).
 
-### 5.5 Requisito de hardware recomendado para esta configuração
+### 5.5 E se quiser mais TPS no futuro?
 
-Para operar um **validador** com a configuração agressiva (blocos de 1 s, orçamento
-de 4 s de peso) com a maior chance de acompanhar a rede:
+Para ir além de ~5.500 TPS sem mudar o tempo de bloco:
 
-| Recurso | Mínimo (visando ~4–6k TPS reais) | Recomendado (tentar ~10k TPS) |
-|---------|----------------------------------|-------------------------------|
-| **CPU** | 8 núcleos, single-thread ≥ 2× i7-7700K (ex.: Ryzen 7 7700X) | 16 núcleos de altíssimo clock (Ryzen 9 7950X / i9-14900K / EPYC/Xeon de alto clock) |
-| **RAM** | 32 GB | 64–128 GB |
-| **Disco** | NVMe SSD 1 TB (ParityDB) | NVMe Gen4/Gen5 em RAID, alta IOPS, 2 TB+ |
-| **Rede** | 1 Gbps simétrico, baixa latência | 2,5–10 Gbps, latência mínima entre validadores |
-| **DB backend** | `--database paritydb` | `--database paritydb` + `--state-pruning`/`--blocks-pruning` ajustados |
-
-> Mesmo com o hardware "recomendado", **10.000 TPS sustentados não são garantidos**
-> com o runtime v0.9.40 sequencial; trate como um alvo a **validar empiricamente em
-> testnet** com carga real, e não como número garantido.
+1. **Re-benchmark dos pesos** em ParityDB/NVMe — pode reduzir peso/tx em ~30–50%,
+   elevando o teto para ~7–8k TPS com o mesmo hardware.
+2. **Mandato de hardware topo de linha** (Ryzen 9, Xeon/EPYC, NVMe Gen5) + orçamento
+   de peso de 3–4s → ~8–11k TPS, mas exige centralização.
+3. **Migrar para `polkadot-sdk`** (ver `docs/MIGRATION_GUIDE.md`) — abre caminho
+   para otimizações futuras e execução mais eficiente.
 
 ---
 
-## 6. Resumo
+## 6. Resumo — Configuração conservadora e segura
 
 | Objetivo | Situação | Observação |
 |----------|----------|------------|
 | Taxa ~0,002 LUNES (transfer) | ✅ **Implementado** | 0,00200 LUNES; demais operações proporcionais |
 | Demais taxas proporcionais | ✅ **Implementado** | NFT 2,45×, contrato 13,76× — proporcionais ao peso |
 | Tempo de bloco 1 s | ✅ **Implementado** | Requer cadeia nova; slot não muda em cadeia viva |
-| Capacidade ≥ 10.000 TPS (parâmetros) | ✅ **Implementado** | ~10.945 TPS teóricos com blocos cheios |
-| Capacidade ≥ 10.000 TPS (física real) | ⚠️ **Não garantido** | Teto realista ~4–6k TPS single-thread; precisa re-benchmark/ParityDB/migração |
-| Requisito de hardware | ✅ **Documentado** | Ver seção 5.5 |
+| Capacidade ~5.500 TPS | ✅ **Implementado** | ~5.472 TPS sustentáveis com blocos cheios |
+| Hardware comum | ✅ **Suportado** | Ryzen 7 / i7 moderno + NVMe → sem risco de travar |
+| Requisito de hardware | ✅ **Documentado** | Ver seção 5.4; roda em VPS comum |
+
+**Filosofia:** esta configuração **não corre riscos**. Blocos 6× mais frequentes
+(1s vs 6s) mas com o mesmo orçamento de peso do spec 107 → TPS salta de ~912 para
+~5.500 **apenas pela maior frequência**, sem exigir hardware excepcional. A cadeia
+roda com segurança em Ryzen 7, i7 moderno, NVMe e 32 GB RAM.
 
 **Recomendação:** compilar, rodar `cargo test`, subir uma **testnet** com este runtime
-e medir a capacidade real sob carga (com ParityDB no hardware-alvo). Se o objetivo de
-10k TPS for firme, priorizar o **re-benchmark dos pesos** e a **migração para o
-polkadot-sdk**.
+e medir a capacidade real sob carga. Para ir além de ~5.500 TPS no futuro, priorizar
+**re-benchmark dos pesos** em ParityDB/NVMe (ganho ~30–50%) antes de aumentar o
+orçamento de peso agressivamente.

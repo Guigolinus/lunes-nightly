@@ -44,7 +44,14 @@ pub mod time {
 	/// `SLOT_DURATION` should have the same value.
 	///
 	/// <https://research.web3.foundation/en/latest/polkadot/block-production/Babe.html#-6.-practical-results>
-	pub const MILLISECS_PER_BLOCK: Moment = 6000;
+	// Tempo de bloco alvo reduzido de 6000 ms para 1000 ms (1 s) para diminuir a
+	// latencia de confirmacao e, junto com o maior orcamento de peso por bloco,
+	// elevar a capacidade (TPS) da rede.
+	//
+	// ATENCAO: a duracao do slot NAO pode ser alterada apos o inicio da cadeia
+	// (isso trava a producao de blocos). Este valor so tem efeito em uma cadeia
+	// nova (novo genesis) ou em uma relancada de forma coordenada.
+	pub const MILLISECS_PER_BLOCK: Moment = 1000;
 	pub const SECS_PER_BLOCK: Moment = MILLISECS_PER_BLOCK / 1000;
 
 	// NOTE: Currently it is not possible to change the slot duration after the chain has started.

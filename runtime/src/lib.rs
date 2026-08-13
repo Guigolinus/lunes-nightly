@@ -130,7 +130,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
         //   `spec_version`, and `authoring_version` are the same between Wasm and native.
         // This value is set to 100 to notify Polkadot-JS App (https://polkadot.js.org/apps) to use
         //   the compatible custom types.
-        spec_version: 107,
+        spec_version: 108,
         impl_version: 1,
         apis: RUNTIME_API_VERSIONS,
         transaction_version: 2,
@@ -150,10 +150,22 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 parameter_types! {
         pub const BlockHashCount: BlockNumber = 2400;
         pub const Version: RuntimeVersion = VERSION;
-        /// We allow for 2 seconds of compute with a 6 second average block time.
+        /// Orçamento de peso por bloco: 4 s de compute (na máquina de REFERÊNCIA) por
+        /// bloco. Com `NORMAL_DISPATCH_RATIO = 75%` isso reserva 3 s (3e12 `ref_time`)
+        /// para extrínsecos normais. Dividido pelo peso de uma transferência simples
+        /// (~274,09 M `ref_time`, incluindo o peso base) resulta em ~10.900
+        /// transferências por bloco; com blocos de 1 s => ~10.900 TPS.
+        ///
+        /// ATENÇÃO (hardware): 4 s de compute de referência por bloco de 1 s exige
+        /// que os validadores executem/importem o bloco muito mais rápido que a
+        /// máquina de referência (fator de ~4-5x de single-core, além de storage
+        /// ParityDB/NVMe e rede de baixa latência). Em hardware de referência a cadeia
+        /// NÃO acompanha blocos cheios e pode travar. Ver `docs/NETWORK_TUNING.md`
+        /// para os requisitos de hardware e a análise de viabilidade. Validar em
+        /// testnet antes de qualquer uso em produção.
         pub RuntimeBlockWeights: frame_system::limits::BlockWeights =
                 frame_system::limits::BlockWeights::with_sensible_defaults(
-                        Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX),
+                        Weight::from_parts(4u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX),
                         NORMAL_DISPATCH_RATIO,
                 );
         pub RuntimeBlockLength: frame_system::limits::BlockLength = frame_system::limits::BlockLength
@@ -284,6 +296,22 @@ pub const PROOF_SIZE_FEE_MULTIPLIER: Balance = 1;
 /// transação possa ser executada com taxa zero (proteção contra DoS/spam).
 pub const MINIMUM_WEIGHT_FEE: Balance = 1_000;
 
+/// Divisor de calibração da taxa por peso.
+///
+/// O `ref_time` do Substrate é medido em picossegundos de compute na máquina de
+/// referência (1 s = `WEIGHT_REF_TIME_PER_SECOND` = 1e12 unidades). Sem divisor,
+/// `weight_to_fee` mapearia 1 unidade -> 1 planck, o que torna as taxas altíssimas
+/// (uma transferência simples custaria ~2,74 LUNES).
+///
+/// Este divisor calibra a taxa para que uma transferência simples
+/// (`balances.transferKeepAlive`, ~274,09 M de `ref_time` incluindo o peso base do
+/// extrínseco) custe **~0,002 LUNES**. As demais operações escalam proporcionalmente
+/// ao peso que consomem:
+///   * mint de NFT      ~0,0049 LUNES
+///   * chamada de contrato ~0,0275 LUNES
+/// Ajustar este único valor reescala TODAS as taxas mantendo a proporção entre elas.
+pub const WEIGHT_FEE_DIVISOR: Balance = 1_380;
+
 /// Conversão de peso em taxa para a Lunes.
 ///
 /// A implementação anterior usava `WeightToFeePolynomial` com
@@ -292,7 +320,7 @@ pub const MINIMUM_WEIGHT_FEE: Balance = 1_000;
 /// (vulnerabilidade crítica de DoS/spam — a rede podia ser inundada sem custo).
 ///
 /// Esta implementação:
-///  * cobra `ref_time` linearmente;
+///  * cobra `ref_time` linearmente, calibrado por `WEIGHT_FEE_DIVISOR`;
 ///  * inclui o custo de `proof_size` (via `PROOF_SIZE_FEE_MULTIPLIER`);
 ///  * aplica um piso `MINIMUM_WEIGHT_FEE` de modo que a taxa NUNCA seja zero;
 ///  * usa aritmética saturante para evitar overflow.
@@ -305,12 +333,17 @@ impl WeightToFee for WeightToFeeLunes {
                         (weight.proof_size() as Balance).saturating_mul(PROOF_SIZE_FEE_MULTIPLIER);
                 ref_time_fee
                         .saturating_add(proof_size_fee)
+                        .saturating_div(WEIGHT_FEE_DIVISOR)
                         .max(MINIMUM_WEIGHT_FEE)
         }
 }
 parameter_types! {
         pub FeeMultiplier: Multiplier = Multiplier::one();
-        pub const TransactionByteFee: Balance = 1 * NANOUNIT;
+        /// Taxa por byte do extrínseco. Reduzida para 10 planck/byte de modo que a
+        /// componente de peso (calibrada por `WEIGHT_FEE_DIVISOR`) domine a taxa e a
+        /// proporção entre operações seja preservada. Uma transferência (~144 bytes)
+        /// paga ~1.440 planck de taxa de tamanho, fração pequena do total (~0,002 LUNES).
+        pub const TransactionByteFee: Balance = 10;
 }
 type NegativeImbalance = <Balances as FrameCurrency<AccountId>>::NegativeImbalance;
 
@@ -1884,10 +1917,12 @@ mod weight_fee_tests {
         }
 
         /// A taxa deve crescer com o `ref_time` consumido.
+        /// Usa valores bem acima do piso (após a divisão por `WEIGHT_FEE_DIVISOR`)
+        /// para exercitar a região linear da conversão.
         #[test]
         fn weight_to_fee_scales_with_ref_time() {
-                let small = Weight::from_parts(1_000, 0);
-                let large = Weight::from_parts(1_000_000, 0);
+                let small = Weight::from_parts(1_000_000_000, 0);
+                let large = Weight::from_parts(1_000_000_000_000, 0);
                 assert!(
                         WeightToFeeLunes::weight_to_fee(&large) > WeightToFeeLunes::weight_to_fee(&small),
                         "taxa deve aumentar com o ref_time"
@@ -1897,12 +1932,26 @@ mod weight_fee_tests {
         /// O componente `proof_size` também deve ser cobrado.
         #[test]
         fn weight_to_fee_includes_proof_size() {
-                let no_proof = Weight::from_parts(1_000_000, 0);
-                let with_proof = Weight::from_parts(1_000_000, 500_000);
+                let no_proof = Weight::from_parts(1_000_000_000, 0);
+                let with_proof = Weight::from_parts(1_000_000_000, 500_000_000);
                 assert!(
                         WeightToFeeLunes::weight_to_fee(&with_proof)
                                 > WeightToFeeLunes::weight_to_fee(&no_proof),
                         "o proof_size deve contribuir para a taxa"
+                );
+        }
+
+        /// Calibração: uma transferência simples deve custar ~0,002 LUNES.
+        /// Peso total (base do extrínseco + dispatch) ~= 274,09 M de `ref_time`.
+        #[test]
+        fn weight_to_fee_transfer_is_about_two_milli_lunes() {
+                // 99_840_000 (base) + 174_250_000 (transferKeepAlive) = 274_090_000
+                let transfer = Weight::from_parts(274_090_000, 0);
+                let fee = WeightToFeeLunes::weight_to_fee(&transfer);
+                // 274_090_000 / 1_380 = 198_616 planck (~0,00198616 LUNES)
+                assert!(
+                        fee > 150_000 && fee < 250_000,
+                        "taxa de peso da transferência fora da faixa alvo (~0,002 LUNES): {fee}"
                 );
         }
 }
